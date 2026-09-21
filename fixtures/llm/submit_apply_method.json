@@ -1,0 +1,28 @@
+{
+  "_comment": "Hand-written, matched to apply_method.py's schema (primary_channel/email/portal_url/apply_url/required_documents/notes, all required). The server_tool_use and web_search_tool_result blocks are here on purpose: the code counts searches and harvests result URLs from exactly these shapes, and tool_choice is {\"type\": \"any\"} rather than a named tool, so the mock resolves the tool from the tools list.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {"type": "server_tool_use", "name": "web_search", "id": "srvtoolu_mock_1", "input": {"query": "Sample Energy careers page"}},
+    {
+      "type": "web_search_tool_result",
+      "id": "srvtoolu_mock_1",
+      "content": [
+        {"type": "web_search_result", "url": "https://example.com/careers", "title": "Careers — Sample Energy"}
+      ]
+    },
+    {
+      "type": "tool_use",
+      "name": "submit_apply_method",
+      "input": {
+        "primary_channel": "portal",
+        "email": null,
+        "portal_url": "https://example.com/careers",
+        "apply_url": "https://example.com/careers/data-engineer",
+        "required_documents": ["cv", "cover_letter"],
+        "notes": "Applications go through the company's own portal; no address is published in the posting."
+      }
+    }
+  ],
+  "usage": {"input_tokens": 300, "output_tokens": 160, "cache_read_input_tokens": 620, "cache_creation_input_tokens": 0}
+}

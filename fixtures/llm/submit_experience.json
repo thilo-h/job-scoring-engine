@@ -1,0 +1,9 @@
+{
+  "_comment": "Hand-written, matched to experience_llm.py's tool schema: min_years is integer-or-null, confidence is one of explicit/implicit/unclear. This is the explicit case.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {"type": "tool_use", "name": "submit_experience", "input": {"min_years": 3, "confidence": "explicit"}}
+  ],
+  "usage": {"input_tokens": 120, "output_tokens": 40, "cache_read_input_tokens": 380, "cache_creation_input_tokens": 0}
+}

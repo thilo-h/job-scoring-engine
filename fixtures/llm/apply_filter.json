@@ -1,0 +1,23 @@
+{
+  "_comment": "Hand-written. smart_filter.py forces this tool so the model cannot invent a filter key; the fixture returns only keys the schema allows.",
+  "model": "claude-sonnet-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "apply_filter",
+      "input": {
+        "q": "",
+        "location": "Musterstadt",
+        "min_score": 0.4,
+        "exp_band": "1-3",
+        "company_type": "startup_scaleup",
+        "remote": "yes",
+        "sort": "score",
+        "direction": "desc",
+        "reasoning": "Junior-level data roles near Musterstadt at startups, remote acceptable."
+      }
+    }
+  ],
+  "usage": {"input_tokens": 180, "output_tokens": 95, "cache_read_input_tokens": 940, "cache_creation_input_tokens": 0}
+}

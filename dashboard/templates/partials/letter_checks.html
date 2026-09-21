@@ -1,0 +1,16 @@
+{# Prüfhinweise zum Anschreiben (src/agent/letter_quality.py). Nach dem
+   Speichern im Editor per hx-swap-oob aktualisiert. #}
+<div id="cl-checks-{{ job.id }}" class="cl-checks"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if checks %}
+    {% set fixable = checks | selectattr("repairable") | list %}
+    {% set notes = checks | rejectattr("repairable") | list %}
+    <details class="banner banner-warn" {% if fixable %}open{% endif %}>
+      <summary><strong>{{ checks | length }} Prüfhinweis{{ 'e' if checks | length != 1 }}</strong>
+        <span class="muted small">— Länge, Seite, Pensum, Zeitformen, Dopplungen, Wiederholungen, Sprachen</span></summary>
+      <ul class="cl-checks-list">
+        {% for c in fixable %}<li>{{ c.message }}</li>{% endfor %}
+        {% for c in notes %}<li class="muted">{{ c.message }}</li>{% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</div>

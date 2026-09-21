@@ -1,0 +1,9 @@
+{
+  "_comment": "Hand-written. The important case: the posting gives no reliable signal, so the model returns null rather than guessing. The extractor must pass that through as None and the DB stores NULL — 'unknown' is a first-class answer here.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {"type": "tool_use", "name": "submit_experience", "input": {"min_years": null, "confidence": "unclear"}}
+  ],
+  "usage": {"input_tokens": 110, "output_tokens": 30}
+}

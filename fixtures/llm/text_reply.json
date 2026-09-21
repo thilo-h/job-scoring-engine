@@ -1,0 +1,9 @@
+{
+  "_comment": "Hand-written. Used for calls with no custom tool: briefing.py (which asks for strict JSON in the text) and the chat modes that only answer. The JSON here has to parse — briefing.py reads it with json.loads.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "end_turn",
+  "content": [
+    {"type": "text", "text": "{\"company_summary\": \"Sample Energy builds analytics for grid operators, roughly 80 people, headquartered in Musterstadt.\", \"role_summary\": \"Owns the ingestion pipelines feeding the analytics product, from source connectors through to the warehouse models.\", \"profile_summary\": \"The pipeline work matches directly. The gap is streaming: the posting expects Kafka experience that the CV does not show.\"}"}
+  ],
+  "usage": {"input_tokens": 1200, "output_tokens": 140}
+}

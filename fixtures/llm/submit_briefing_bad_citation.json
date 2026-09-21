@@ -1,0 +1,50 @@
+[
+  {
+    "_comment": "A list replays in order across calls. Round 1: the model searched, then cited a URL that no search returned — the exact failure the citation check exists for. The code must reject this and send the objection back.",
+    "model": "claude-haiku-4-5",
+    "stop_reason": "tool_use",
+    "content": [
+      {"type": "server_tool_use", "name": "web_search", "id": "srvtoolu_c1", "input": {"query": "Sample Energy"}},
+      {
+        "type": "web_search_tool_result",
+        "id": "srvtoolu_c1",
+        "content": [{"type": "web_search_result", "url": "https://example.com/about", "title": "About — Sample Energy"}]
+      },
+      {
+        "type": "tool_use",
+        "name": "submit_briefing",
+        "id": "toolu_briefing_bad",
+        "input": {
+          "company_summary": "Sample Energy is a 400-person unicorn valued at two billion and the market leader across Europe.",
+          "role_summary": "Owns the ingestion pipelines.",
+          "profile_summary": "Pipelines match; streaming is the gap.",
+          "company_facts": [
+            {"fact": "400-person unicorn valued at two billion", "source_url": "https://crunchbase.example.com/sample-energy"}
+          ]
+        }
+      }
+    ],
+    "usage": {"input_tokens": 400, "output_tokens": 200}
+  },
+  {
+    "_comment": "Round 2: after the objection, the claim is gone and what remains cites the one URL the search actually returned.",
+    "model": "claude-haiku-4-5",
+    "stop_reason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "submit_briefing",
+        "id": "toolu_briefing_fixed",
+        "input": {
+          "company_summary": "Sample Energy builds analytics for grid operators, based in Musterstadt.",
+          "role_summary": "Owns the ingestion pipelines.",
+          "profile_summary": "Pipelines match; streaming is the gap.",
+          "company_facts": [
+            {"fact": "builds analytics for grid operators", "source_url": "https://example.com/about"}
+          ]
+        }
+      }
+    ],
+    "usage": {"input_tokens": 520, "output_tokens": 150}
+  }
+]

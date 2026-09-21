@@ -1,0 +1,40 @@
+{
+  "_comment": "Hand-written. The clean case: two searches ran, and every company fact cites a URL that appears in the web_search_tool_result blocks above it. The citation check therefore passes and no repair round fires. Fixtures for the failing cases live beside this one.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {"type": "server_tool_use", "name": "web_search", "id": "srvtoolu_b1", "input": {"query": "Sample Energy company what they do"}},
+    {
+      "type": "web_search_tool_result",
+      "id": "srvtoolu_b1",
+      "content": [
+        {"type": "web_search_result", "url": "https://example.com/about", "title": "About — Sample Energy"},
+        {"type": "web_search_result", "url": "https://news.example.com/sample-energy-series-b", "title": "Sample Energy raises a Series B"}
+      ]
+    },
+    {"type": "server_tool_use", "name": "web_search", "id": "srvtoolu_b2", "input": {"query": "Sample Energy news 2026"}},
+    {
+      "type": "web_search_tool_result",
+      "id": "srvtoolu_b2",
+      "content": [
+        {"type": "web_search_result", "url": "https://news.example.com/sample-energy-grid-deal", "title": "Sample Energy signs grid operator deal"}
+      ]
+    },
+    {
+      "type": "tool_use",
+      "name": "submit_briefing",
+      "id": "toolu_briefing_ok",
+      "input": {
+        "company_summary": "Sample Energy builds analytics for grid operators and employs roughly 80 people in Musterstadt. They raised a Series B in 2025 and recently signed a deal with a regional grid operator.",
+        "role_summary": "The role owns the ingestion pipelines feeding the analytics product, from source connectors through to the warehouse models. Python, SQL and Airflow are named as the daily stack.",
+        "profile_summary": "The pipeline ownership matches directly, and the workload and location both fit. The gap is streaming: the posting expects Kafka experience that the CV does not show.",
+        "company_facts": [
+          {"fact": "roughly 80 people in Musterstadt", "source_url": "https://example.com/about"},
+          {"fact": "raised a Series B in 2025", "source_url": "https://news.example.com/sample-energy-series-b"},
+          {"fact": "recently signed a deal with a regional grid operator", "source_url": "https://news.example.com/sample-energy-grid-deal"}
+        ]
+      }
+    }
+  ],
+  "usage": {"input_tokens": 420, "output_tokens": 280, "cache_read_input_tokens": 4100, "cache_creation_input_tokens": 0}
+}

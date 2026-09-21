@@ -1,0 +1,9 @@
+{
+  "_comment": "Hand-written. Confidence sits above reply_tracker's AUTO_BUMP_CONFIDENCE of 0.75, so this one exercises the auto-bump branch. A mid-confidence variant lives alongside it.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {"type": "tool_use", "name": "classify_reply", "input": {"classification": "interview", "confidence": 0.92, "summary": "Invitation to a first call, two time slots offered."}}
+  ],
+  "usage": {"input_tokens": 480, "output_tokens": 60}
+}

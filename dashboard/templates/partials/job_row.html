@@ -1,0 +1,45 @@
+<tr class="job-row" id="row-{{ job.id }}" data-id="{{ job.id }}">
+  <td class="stop"><input type="checkbox" class="bulk-check" value="{{ job.id }}"></td>
+  <td>
+    {% set score = job.relevance_score or 0 %}
+    <span class="score-pill {{ 'high' if score >= 0.6 else 'mid' if score >= 0.4 else 'low' }}">
+      {{ '%.2f' % score }}
+    </span>
+  </td>
+  <td class="title-cell" title="{{ job.title }}">{{ job.title }}</td>
+  <td class="company-cell" title="{{ job.company }}">{{ job.company }}</td>
+  <td>
+    {{ job.location or '—' }}
+    {% if job.is_remote %}<span class="tag" title="Remote">⌂</span>{% endif %}
+  </td>
+  <td class="muted">{{ (job.workload_percent ~ '%') if job.workload_percent else '—' }}</td>
+  <td>
+    <span class="tag">{{ job.source }}</span>
+  </td>
+  <td>
+    {% set days = job.last_seen_at | days_ago %}
+    {% if days is not none %}
+      {% set freshness = 'fresh' if days <= 7 else 'medium' if days <= 21 else 'stale' %}
+      <span class="seen-pill seen-{{ freshness }}" title="Last seen by scraper: {{ job.last_seen_at[:10] }}">👁 {{ days }}d</span>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+  <td><span class="status-pill status-{{ job.application_status }}">{{ STATUS_LABELS.get(job.application_status, job.application_status) }}</span></td>
+  <td class="stop">
+    <div class="btn-row">
+      {% if job.application_status != 'bookmarked' %}
+        <button class="btn" hx-post="/job/{{ job.id }}/status" hx-vals='{"status": "bookmarked"}' hx-target="#row-{{ job.id }}" hx-swap="outerHTML" title="Bookmark">★</button>
+      {% endif %}
+      {% if job.application_status not in ('applied', 'interview', 'offer') %}
+        <button class="btn" hx-post="/job/{{ job.id }}/status" hx-vals='{"status": "applied"}' hx-target="#row-{{ job.id }}" hx-swap="outerHTML" title="Mark applied">→ Applied</button>
+      {% endif %}
+      {% if job.application_status != 'ignored' %}
+        <button class="btn ghost" hx-post="/job/{{ job.id }}/status" hx-vals='{"status": "ignored"}' hx-target="#row-{{ job.id }}" hx-swap="outerHTML" title="Ignore">✕</button>
+      {% else %}
+        <button class="btn ghost" hx-post="/job/{{ job.id }}/status" hx-vals='{"status": "new"}' hx-target="#row-{{ job.id }}" hx-swap="outerHTML" title="Restore">↺</button>
+      {% endif %}
+      <a href="{{ job.url }}" target="_blank" rel="noopener" class="btn ghost stop" title="Open original posting">↗</a>
+    </div>
+  </td>
+</tr>

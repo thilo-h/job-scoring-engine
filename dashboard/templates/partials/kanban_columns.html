@@ -1,0 +1,18 @@
+<div class="kanban">
+  {% for status in statuses %}
+  <div class="kanban-col" id="col-{{ status }}" data-status="{{ status }}">
+    <h3>
+      <span><span class="status-pill status-{{ status }}">{{ STATUS_LABELS[status] }}</span></span>
+      <span class="count">{{ columns.get(status, [])|length }}</span>
+    </h3>
+    <div class="kanban-col-body" data-status="{{ status }}">
+      {% for job in columns.get(status, []) %}
+        {% include "partials/kanban_card.html" %}
+      {% endfor %}
+    </div>
+    {% if not columns.get(status, []) %}
+      <div class="kanban-empty muted small">drop a card here</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>

@@ -1,0 +1,65 @@
+[project]
+name = "job-scoring-engine"
+version = "0.1.0"
+description = "Deterministic and LLM-based relevance scoring for job postings"
+requires-python = ">=3.12"
+
+dependencies = [
+    # Scraping
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "tenacity>=8.2",
+    "certifi>=2024.0",
+    # Config + CLI
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "python-dotenv>=1.0",
+    # Dashboard
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    # LLM
+    "anthropic>=0.40",
+    # Letter rendering + page measurement
+    "python-docx>=1.1",
+    "pypdf>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+    "httpx",          # FastAPI TestClient
+]
+
+[project.scripts]
+jobfinder = "src.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+# Deliberately not "UP": modernising every Optional[X] to X | None would touch
+# almost every file for no behavioural gain. Add it when there is a reason to
+# rewrite those signatures anyway.
+select = ["E", "F", "I", "B"]
+# E501: the long lines are prose in docstrings and prompt strings, where
+# reflowing costs more readability than the width does.
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI requires these in argument defaults — that is the framework's
+# interface, not a mutable-default bug.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query",
+]

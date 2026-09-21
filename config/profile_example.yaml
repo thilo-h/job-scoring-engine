@@ -1,0 +1,410 @@
+# =============================================================
+# Job Scoring Engine — example profile
+# =============================================================
+# A complete, runnable profile with fictional data. Copy it to
+# `config/profile_<yourname>.yaml` and select it with `--profile <yourname>`
+# or `JOBFINDER_PROFILE=<yourname>`.
+#
+# Everything the scorer reads is present here, so the file doubles as the
+# schema reference. Company names, keywords and weights are illustrative —
+# the point is the shape, not the content.
+# =============================================================
+
+profile:
+  name: "Alex Muster"
+  current_role: "Data Engineer / Data Science Student"
+  university: "Musterstadt University of Applied Sciences"
+  degree_level: "master"
+  available_from: "immediate"
+
+  # Sender block for the letter renderer (DOCX/PDF).
+  sender:
+    name: "Alex Muster"
+    address_lines:
+      - "Beispielstrasse 1"
+      - "8000 Musterstadt, Switzerland"
+    phone: "+41 00 000 00 00"
+    email: "alex.muster@example.com"
+
+  # Injected into LLM prompts as "who is this person?". Two to four sentences,
+  # factual. The triager and the briefing generator both read it.
+  background_summary: |
+    Alex is at junior/associate level (about two years of full-time
+    experience) and builds applied LLM systems — retrieval, evaluation
+    harnesses, and the review UIs that keep a human in the loop. Target
+    roles: Data Engineer, AI Engineer / Applied AI, Solutions Engineer,
+    Technology Consultant (AI/Data). Available immediately at 80–100%
+    alongside a part-time MSc. Languages: German native, English fluent,
+    Spanish B1/B2. Locations: Musterstadt region, Switzerland, Remote.
+
+  salary:
+    target_monthly_chf: 0      # fill in
+    range_min: 0
+    range_max: 0
+    workload_basis: 80         # target workload in %
+
+  education:
+    - degree: "M.Sc. Applied Data Science"
+      institution: "Musterstadt University of Applied Sciences"
+      status: "ongoing"
+    - degree: "B.Sc. Computer Science"
+      institution: "Example Institute of Technology"
+
+  # Feeds the LLM prompts as-is. The scorer additionally uses
+  # `preferences.skill_match.extra_keywords` (see below).
+  skills:
+    technical:
+      proficient:
+        - Python
+        - SQL
+        - Git
+      intermediate:
+        - FastAPI
+        - Docker
+        - Postgres
+      basic:
+        - Kubernetes
+    domain:
+      - Data engineering
+      - Applied machine learning
+      - Retrieval and search
+
+  languages:
+    german:
+      level: "native"
+    english:
+      level: "fluent"
+    spanish:
+      level: "intermediate"
+
+# =============================================================
+# SEARCH
+# =============================================================
+search:
+  # Only `keywords` is read by the scrapers. Each term costs roughly two to
+  # three minutes of scrape time, so keep the list short and specific.
+  keywords:
+    - "Data Engineer"
+    - "AI Engineer"
+    - "Applied AI Engineer"
+    - "Machine Learning Engineer"
+    - "Solutions Engineer"
+    - "Technology Consultant"
+
+  location: "Musterstadt"
+  locations_secondary:
+    - "Beispielstadt"
+  radius_km: 30
+  cantons:
+    - "ZH"
+    - "ZG"
+    - "LU"
+
+  workload:
+    # `preferred_percent` steers the score; `max_percent` is passed to the
+    # portal as a search filter. Keep them separate — a max of 80 hides
+    # 100% postings that would be acceptable if flexible.
+    min_percent: 60
+    max_percent: 100
+    preferred_percent: 80
+    accept_100_if_flexible: true
+
+  job_types:
+    - part_time
+    - working_student
+    - full_time
+
+  max_age_days: 14
+  results_per_keyword: 30
+
+  # Curated company career pages. `ats` + `ats_slug` use the public job-board
+  # endpoints of the applicant tracking system; without them the scraper falls
+  # back to parsing the careers page HTML.
+  career_pages:
+    - {name: "Example Robotics", ats: greenhouse, ats_slug: "example-robotics", location: "Musterstadt", industry: "ai",     is_startup: true}
+    - {name: "Sample Energy",    ats: lever,      ats_slug: "sample-energy",    location: "Musterstadt", industry: "energy", is_startup: true}
+    - {name: "Muster Analytics", url: "https://example.com/careers",            location: "Musterstadt", industry: "saas",   is_startup: false}
+
+# =============================================================
+# PREFERENCES — scoring configuration
+# =============================================================
+preferences:
+
+  # Weights must sum to 1.0.
+  weights:
+    profile_match: 0.22       # role family match (see role_families)
+    domain_match: 0.18        # target industry
+    company_tier: 0.16        # tier 1/2/3 target-company system
+    location_match: 0.13
+    skill_match: 0.08
+    mentoring: 0.07           # career development mentioned in the posting
+    workload_match: 0.06      # often unknown, so weighted low
+    remote_option: 0.06
+    thesis_opportunity: 0.04
+    # 0.22+0.18+0.16+0.13+0.08+0.07+0.06+0.06+0.04 = 1.00
+
+  # A domain keyword in the title or company name is a real signal. The same
+  # word buried in 4000 characters of description is often boilerplate, so
+  # description-only hits count with this factor.
+  domain_description_factor: 0.75
+  # No target domain recognised → neutral, not penalised.
+  domain_neutral_score: 0.5
+
+  skill_match:
+    # Full marks at N matched skills, rather than a share of the skill list.
+    full_marks_at: 3
+    # Extends `profile.skills.technical` for scoring only. Postings name
+    # methods and tools that a CV skill list usually does not.
+    extra_keywords:
+      - "etl"
+      - "pipeline"
+      - "airflow"
+      - "dbt"
+      - "spark"
+      - "api"
+      - "rag"
+      - "embeddings"
+      - "llm"
+      - "analytics"
+      - "data analysis"
+      - "power bi"
+      - "tableau"
+      - "kpi"
+
+  # Target companies by tier. Keep this list short and honest — it exists to
+  # nudge the ranking, not to be a mailing list. The names below are invented.
+  company_tiers:
+    tier_1:  # strong fit
+      - "example robotics"
+      - "sample energy"
+      - "muster analytics"
+    tier_2:  # good fit, apply when the posting fits
+      - "beispiel energie"
+      - "sample software"
+      - "demo logistics"
+      - "placeholder health"
+    tier_3:  # worth watching
+      - "example corp"
+      - "acme industries"
+
+  # Target industries. Keywords support `*` wildcards.
+  domains:
+    energy:
+      keywords:
+        - "energy transition"
+        - "energy management"
+        - "energy efficiency"
+        - "*erneuerbare*"
+        - "smart grid"
+        - "renewable*"
+      score: 1.0
+
+    buildings_realestate:
+      keywords:
+        - "proptech"
+        - "construction tech"
+        - "real estate"
+        - "*immobilien*"
+        - "building automation"
+        - "smart building*"
+        - "built environment"
+      score: 0.9
+
+    mobility_transport:
+      keywords:
+        - "mobility"
+        - "logistics"
+        - "*verkehr*"
+        - "public transport"
+        - "fleet management"
+        - "rail*"
+      score: 0.9
+
+  # Ordered list — the first match in list order wins, so put the more
+  # specific titles first ("AI Solutions Engineer" should land in the AI
+  # family, not in the generic solutions family).
+  role_families:
+    - name: data_ml_engineer
+      score: 1.0
+      titles:
+        - "data engineer"
+        - "ml engineer"
+        - "machine learning engineer"
+        - "mlops engineer"
+        - "analytics engineer"
+    - name: ai_engineer
+      score: 0.95
+      titles:
+        - "ai engineer"
+        - "applied ai engineer"
+        - "ai solutions engineer"
+        - "llm engineer"
+        - "genai engineer"
+    - name: forward_deployed_solutions
+      score: 0.9
+      titles:
+        - "forward deployed engineer"
+        - "solutions engineer"
+        - "solution engineer"
+        - "implementation engineer"
+        - "customer engineer"
+    - name: technology_consultant
+      score: 0.85
+      titles:
+        - "technology consultant"
+        - "data consultant"
+        - "ai consultant"
+        - "analytics consultant"
+    - name: research
+      score: 0.8
+      titles:
+        - "research associate"
+        - "research engineer"
+        - "wissenschaftliche*r mitarbeiter*in"
+
+  # Legacy four-category keyword scoring, kept for profiles that predate
+  # `role_families`. Leave empty when using role families.
+  profile_keywords:
+    pm_primary: []
+    value_engineer: []
+    ai_solutions: []
+    innovation_venture: []
+
+  # A purely technical title with no data/AI component gets a deduction, so
+  # that e.g. "Frontend Engineer" does not float up on location plus skill
+  # overlap alone. `rescue_keywords` cancel the penalty.
+  title_penalties:
+    engineering_only:
+      patterns:
+        - "frontend engineer"
+        - "frontend developer"
+        - "mobile engineer"
+        - "ios engineer"
+        - "android engineer"
+        - "qa engineer"
+      rescue_keywords:
+        - "data"
+        - "machine learning"
+        - "ai"
+        - "llm"
+      penalty: 0.15
+
+  # Bonus when the posting asks for a language the applicant actually has.
+  language_boost:
+    spanish:
+      keywords: ["spanish", "spanisch", "español"]
+      boost: 0.05
+
+  boost_keywords:
+    - "junior"
+    - "graduate"
+    - "entry level"
+    - "berufseinsteiger*"
+    - "working student"
+    - "werkstudent*"
+    - "mentoring"
+    - "remote"
+    - "hybrid"
+
+  # Structured penalty from `jobs.min_years_experience`. Complements the
+  # keyword penalties: it applies even when "senior" appears nowhere but the
+  # posting explicitly asks for N+ years.
+  experience_penalty:
+    target_max_years: 3
+    per_year: 0.06            # 5 years → -0.12, 7 years → -0.24
+    cap: 0.30
+
+  avoid_keywords:
+    - "senior"
+    - "lead"
+    - "principal"
+    - "staff engineer"
+    - "head of"
+    - "director"
+    - "vp "
+    - "leiter*"
+    - "leitung"
+    - "teamleiter*"
+    - "abteilungsleiter*"
+    - "10+ years"
+    - "8+ years"
+    - "5+ years"
+    - "mindestens 5 jahre"
+    - "sénior"
+
+  # Titles where "senior" / "lead" should NOT trigger a penalty, because the
+  # word means something else in that context.
+  senior_exempt_patterns:
+    - "senior manager"
+    - "lead generation"
+
+# =============================================================
+# SCRAPERS
+# =============================================================
+scrapers:
+  enabled:
+    - jobs_ch          # public search API
+    - swissdevjobs     # public preload API
+    - startupticker    # server-rendered HTML
+    - barcelonajobs    # RSS feed
+    - career_pages     # curated career pages (list under search.career_pages)
+
+  rate_limiting:
+    min_delay_seconds: 2.0
+    max_delay_seconds: 5.0
+    respect_robots_txt: true
+    # How this tool identifies itself, sent as an HTTP header on every request.
+    # Deliberately not a browser string: a site that wants to refuse this tool
+    # has to be able to recognise it, and a robots.txt rule only means something
+    # when the name you evaluate it under is the name you send. The default is a
+    # bare "JobScoringEngine/0.1"; adding a way to reach you is good etiquette
+    # for anything that runs unattended.
+    # user_agent: "JobScoringEngine/0.1 (+mailto:you@example.com)"
+
+  retry:
+    max_retries: 3
+    backoff_factor: 2.0
+
+# =============================================================
+# ASSETS
+# =============================================================
+# Paths relative to the project root. Read by the briefing generator, the
+# triager and the letter renderer.
+assets:
+  cv_md: "assets/example/cv_example.md"
+  letter_style_guide: "assets/example/letter_style_guide.md"
+  # Optional: a different CV version per application channel.
+  # cv_md_by_channel:
+  #   direct_contact: "assets/example/cv_example.md"
+  #   default: "assets/example/cv_example.md"
+  attachments:
+    - {file: "assets/example/cv_example.md", label: "CV — Alex Muster", default: true, doc_type: "cv"}
+
+# =============================================================
+# OUTPUT
+# =============================================================
+output:
+  database_path: "data/jobs_example.db"
+  csv_export_path: "data/jobs_example_export.csv"
+  log_level: "INFO"
+
+# =============================================================
+# LETTER REVIEW
+# =============================================================
+letter:
+  # Repositories the review path may reference. Empty = never link one.
+  #   - {url: "https://github.com/<user>/<repo>", title: "…", topics: [rag, llm]}
+  repos: []
+
+  swiss_spelling: true
+
+  # Review rules learned from feedback on earlier letters. Injected as their
+  # own system block, so a new rule can be added without editing the style
+  # guide, and it overrides the guide on conflict.
+  rules:
+    - "450–600 words, one page as a goal rather than a condition. Cut redundancy, never evidence."
+    - "Do not retell the education chronologically — it is already in the CV. At most two sentences, and only when it supports the central argument."
+    - "Phrase availability relative to today ('immediately' / 'from <month>') — never copy a date from the CV that may already be in the past."
+    - "Avoid stock phrases: 'purpose-built', 'non-negotiable', 'exactly the intersection'. Concrete evidence instead."
+    - "Two or three of the most relevant stations per letter, not every station in the CV."
+    - "Keep the form of address consistent — a formal letter never slips into the informal second person."

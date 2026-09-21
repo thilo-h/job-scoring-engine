@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block content %}
+{% set ov = overview %}
+<div class="outbound">
+
+  <section class="ob-kpis">
+    <div class="ob-kpi {% if ov.sent_this_week == 0 %}ob-kpi-zero{% else %}ob-kpi-good{% endif %}">
+      <div class="ob-kpi-value">{{ ov.sent_this_week }}</div>
+      <div class="ob-kpi-label">Diese Woche versendet</div>
+    </div>
+    <div class="ob-kpi {% if ov.followups_open %}ob-kpi-warn{% endif %}">
+      <div class="ob-kpi-value">{{ ov.followups_open }}</div>
+      <div class="ob-kpi-label">Offen zum Nachfassen</div>
+    </div>
+    <div class="ob-kpi">
+      <div class="ob-kpi-value">{{ ov.replies_this_week }}</div>
+      <div class="ob-kpi-label">Antworten diese Woche</div>
+    </div>
+    <div class="ob-kpi {% if ov.drafts_stale %}ob-kpi-warn{% endif %}">
+      <div class="ob-kpi-value">{{ ov.drafts_stale }}</div>
+      <div class="ob-kpi-label">Entwürfe älter als 3 Tage</div>
+    </div>
+  </section>
+  <p class="muted small ob-weekline">
+    Woche {{ ov.week_start.strftime('%d.%m.') }}–{{ ov.week_end.strftime('%d.%m.%Y') }}
+    · insgesamt versendet: {{ ov.total_sent }}
+    {% if ov.pbl_counts %}· zählt fürs Praxismodul: {{ ov.pbl_counts.get('true', 0) }} ja, {{ ov.pbl_counts.get('unknown', 0) }} offen{% endif %}
+  </p>
+
+  {% if ov.drafts_stale %}
+    <div class="banner banner-warn">
+      {{ ov.drafts_stale }} Entwurf{{ 'e' if ov.drafts_stale != 1 }} lieg{{ 'en' if ov.drafts_stale != 1 else 't' }}
+      seit mehr als 3 Tagen — abschicken oder verwerfen.
+    </div>
+  {% endif %}
+  {% if ov.new_queue > ov.new_queue_limit %}
+    <div class="banner banner-warn">
+      NEW-Warteschlange: <strong>{{ '{:,}'.format(ov.new_queue).replace(',', "'") }}</strong>
+      Stellen (Ziel ≤ {{ ov.new_queue_limit }}). Der Filter ist zu weit, nicht du zu langsam.
+      <a href="/browse?statuses=new">Intake ansehen</a>
+    </div>
+  {% endif %}
+
+  <div class="ob-grid">
+
+    <section class="stat-card">
+      <h3>Nachfassen <span class="muted small">— versendet, 10 Werktage ohne Antwort</span></h3>
+      {% if ov.followups %}
+        <ul class="ob-list">
+          {% for a in ov.followups %}
+            <li>
+              <div class="ob-line">
+                <strong>{{ a.company }}</strong> — {% if a.job_url %}<a href="{{ a.job_url }}" target="_blank" rel="noopener">{{ a.role }}</a>{% else %}{{ a.role }}{% endif %}
+              </div>
+              <div class="muted small">
+                {{ a.channel }} · versendet {{ a.sent_at[:10] }} · fällig seit {{ a.overdue_days }} Tag{{ 'en' if a.overdue_days != 1 }}
+              </div>
+              <div class="btn-row">
+                {% for action, label in [('followed_up', 'Nachgefasst'), ('replied', 'Antwort erhalten'), ('stale', 'Abschreiben')] %}
+                  <form method="post" action="/applications/{{ a.id }}/advance">
+                    <input type="hidden" name="action" value="{{ action }}">
+                    <button class="btn" type="submit">{{ label }}</button>
+                  </form>
+                {% endfor %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Nichts fällig.</p>
+      {% endif %}
+    </section>
+
+    <section class="stat-card">
+      <h3>Entwürfe</h3>
+      {% if ov.drafts %}
+        <ul class="ob-list">
+          {% for a in ov.drafts %}
+            <li class="{% if a.is_stale %}ob-stale{% endif %}">
+              <div class="ob-line">
+                <strong>{{ a.company }}</strong> — {% if a.job_url %}<a href="{{ a.job_url }}" target="_blank" rel="noopener">{{ a.role }}</a>{% else %}{{ a.role }}{% endif %}
+              </div>
+              <div class="muted small">{{ a.channel }} · angelegt vor {{ a.age_days }} Tag{{ 'en' if a.age_days != 1 }}{% if a.notes %} · {{ a.notes }}{% endif %}</div>
+              <div class="btn-row">
+                <form method="post" action="/applications/{{ a.id }}/advance">
+                  <input type="hidden" name="action" value="sent">
+                  <button class="btn primary" type="submit" title="Verschickt nichts. Hält fest, dass die Bewerbung raus ist.">Als versendet markieren</button>
+                </form>
+                <form method="post" action="/applications/{{ a.id }}/advance">
+                  <input type="hidden" name="action" value="stale">
+                  <button class="btn ghost" type="submit">Verwerfen</button>
+                </form>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Keine offenen Entwürfe.</p>
+      {% endif %}
+    </section>
+
+    <section class="stat-card">
+      <h3>Bewerbung erfassen</h3>
+      <p class="muted small" style="margin-top:-6px;">
+        Für alles ausserhalb der Pipeline: Direktkontakt, Referral, Portal.
+        Stellen aus Browse erfasst du im Detail-Drawer.
+      </p>
+      <form method="post" action="/applications" class="ob-form">
+        <input type="text" name="company" placeholder="Firma" required>
+        <input type="text" name="role" placeholder="Rolle / Anlass" required>
+        <select name="channel">
+          <option value="ats">ATS / Portal</option>
+          <option value="email">E-Mail</option>
+          <option value="direct_contact">Direktkontakt</option>
+          <option value="referral">Referral</option>
+        </select>
+        <select name="status">
+          <option value="drafted">als Entwurf</option>
+          <option value="sent">schon versendet (heute)</option>
+        </select>
+        <input type="text" name="notes" placeholder="Notiz (optional)">
+        <button class="btn primary" type="submit">Erfassen</button>
+      </form>
+    </section>
+
+    <section class="stat-card">
+      <h3>Watchlist <span class="muted small">— neue Treffer, 7 Tage</span></h3>
+      {% if watchlist_hits %}
+        <ul class="ob-list">
+          {% for h in watchlist_hits[:10] %}
+            <li>
+              <div class="ob-line">
+                <span class="tag">{{ h.tier or 'KW' }}</span>
+                <strong>{{ h.company }}</strong> — <a href="{{ h.url }}" target="_blank" rel="noopener">{{ h.title }}</a>
+              </div>
+              <div class="muted small">
+                {{ h.source }}{% if h.relevance_score is not none %} · Score {{ '%.2f' % h.relevance_score }}{% endif %}
+                {% for r in h.reasons.split(';') if r.startswith('kw:') %} · «{{ r[3:] }}»{% endfor %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if watchlist_hits|length > 10 %}<p class="muted small">+ {{ watchlist_hits|length - 10 }} weitere</p>{% endif %}
+      {% else %}
+        <p class="muted">Keine neuen Treffer.</p>
+      {% endif %}
+      <p class="small"><a href="/watchlist">Alle Firmen und Abdeckung →</a></p>
+    </section>
+
+  </div>
+
+  <section class="stat-card ob-wide">
+    <h3>Laufende Bewerbungen</h3>
+    {% if ov.active %}
+      <table class="ob-table">
+        <thead><tr><th>Firma</th><th>Rolle</th><th>Kanal</th><th>Status</th><th>Versendet</th><th>Nachfassen</th><th>Antwort</th><th title="Zählt die Stelle für ein studienbegleitendes Praxismodul?">Studium</th><th></th></tr></thead>
+        <tbody>
+          {% for a in ov.active %}
+            <tr>
+              <td><strong>{{ a.company }}</strong></td>
+              <td>{% if a.job_url %}<a href="{{ a.job_url }}" target="_blank" rel="noopener">{{ a.role }}</a>{% else %}{{ a.role }}{% endif %}</td>
+              <td class="muted">{{ a.channel }}</td>
+              <td><span class="tag">{{ a.status }}</span></td>
+              <td class="muted">{{ (a.sent_at or '')[:10] }}</td>
+              <td class="muted">{{ a.followup_due or '' }}{% if a.followup_sent_at %} ✓{% endif %}</td>
+              <td class="muted">{{ (a.replied_at or '')[:10] }}</td>
+              <td>
+                <form method="post" action="/applications/{{ a.id }}/pbl">
+                  <select name="value" onchange="this.form.submit()">
+                    {% for v, label in [('true', 'ja'), ('unknown', '?'), ('false', 'nein')] %}
+                      <option value="{{ v }}" {% if a.counts_for_project_based_learning == v %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </form>
+              </td>
+              <td>
+                <form method="post" action="/applications/{{ a.id }}/advance" class="btn-row">
+                  <select name="action">
+                    {% for s in ['followed_up', 'replied', 'interview', 'offer', 'rejected', 'stale'] %}
+                      <option value="{{ s }}">{{ s }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn" type="submit">Setzen</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">Noch nichts unterwegs.</p>
+    {% endif %}
+    {% if ov.closed %}
+      <details style="margin-top:12px;">
+        <summary class="muted small">Abgeschlossen ({{ ov.closed|length }})</summary>
+        <ul class="ob-list">
+          {% for a in ov.closed %}
+            <li class="muted small">{{ a.company }} — {{ a.role }} · {{ a.status }}{% if a.outcome %} · {{ a.outcome }}{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

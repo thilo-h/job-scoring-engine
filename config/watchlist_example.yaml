@@ -1,0 +1,91 @@
+# watchlist_example.yaml
+# A second, parallel search path alongside the broad keyword search.
+#
+# The relevance score filters the world; the watchlist does not filter, it
+# observes. Every new posting at a company listed here is surfaced, even at a
+# low score. Polled daily, while the broad keyword search runs weekly.
+#
+# Each entry needs a `tier`, which decides how loudly a hit is reported:
+#   A   Buildings & energy        → instant alert
+#   A2  Mobility & transport      → instant alert
+#   B   Data / AI consultancies   → weekly digest
+#   C   Research & institutes     → instant alert
+#   D   Wildcards                 → weekly digest
+#
+# `careers_url: null` means "not verified yet" — fill it in by hand rather
+# than letting the scraper guess.
+#
+# All companies below are invented.
+
+meta:
+  owner: example
+  focus_domains: [energy, buildings_realestate, mobility_transport]
+  workload: "60-80%, 100% if flexible"
+  locations_primary: [Musterstadt, Beispielstadt]
+  locations_secondary: [Remote, Hybrid]
+
+alerting:
+  instant_tiers: ["A", "A2", "C"]
+  digest_tiers: ["A", "A2", "B", "C", "D"]
+  # Any posting whose text mentions one of these is worth a look regardless
+  # of the role title.
+  keyword_hits:
+    - "retrieval"
+    - "evaluation"
+    - "llm"
+
+# Titles this watchlist reacts to. Deliberately broader than the main filter —
+# at these companies you want to see everything.
+role_patterns:
+  strong:
+    - "Data Engineer"
+    - "AI Engineer"
+    - "Applied AI"
+    - "Machine Learning Engineer"
+    - "Solutions Engineer"
+    - "Research Associate"
+    - "Technology Consultant"
+  weak:
+    - "Consultant"
+    - "Analyst"
+    - "Engineer"
+
+# Never report these, whatever the tier.
+hard_excludes:
+  title:
+    - "Praktikum Buchhaltung"
+    - "Lehrstelle"
+  text: []
+
+companies:
+  # --- Tier A: buildings & energy ---
+  - name: Sample Energy
+    tier: A
+    careers_url: "https://example.com/careers"
+    note: "Public job board via ATS"
+
+  - name: Beispiel Energie
+    tier: A
+    careers_url: null
+    note: "Careers page not verified yet"
+
+  - name: Example Robotics
+    tier: A
+    careers_url: "https://example.com/jobs"
+
+  # --- Tier A2: mobility & transport ---
+  - name: Demo Logistics
+    tier: A2
+    careers_url: null
+
+  # --- Tier B: data / AI consultancies ---
+  - name: Muster Analytics
+    tier: B
+    careers_url: "https://example.com/careers"
+
+  # --- Tier C: research institutions, no public board ---
+  - name: Musterstadt University of Applied Sciences
+    tier: C
+    careers_url: null
+    channel: direct_email
+    note: "Open applications only — no public postings"

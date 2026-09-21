@@ -1,0 +1,21 @@
+{
+  "_comment": "Hand-written. url_extractor.py turns messy HTML into structured fields for the manual-add form; the user reviews them before saving.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "submit_extraction",
+      "input": {
+        "title": "Data Engineer",
+        "company": "Sample Energy",
+        "location": "Musterstadt, Switzerland",
+        "description": "Build and operate the ingestion pipelines behind our smart-grid analytics. Python, SQL, Airflow.",
+        "workload_percent": 80,
+        "job_type": "full_time",
+        "remote": true
+      }
+    }
+  ],
+  "usage": {"input_tokens": 2400, "output_tokens": 210}
+}

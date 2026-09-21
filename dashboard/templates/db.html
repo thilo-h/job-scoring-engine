@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="db-layout">
+  <aside class="db-sidebar">
+    <h3>Tables</h3>
+    {% for t in tables %}
+      <a href="/db?table={{ t.name }}" class="db-table-link {% if t.name == selected %}active{% endif %}">
+        <span>{{ t.name }}</span>
+        <span class="muted small">{{ t.row_count }}</span>
+      </a>
+    {% endfor %}
+
+    <h3 style="margin-top:18px;">Cheatsheet</h3>
+    <ul class="db-cheats">
+      <li><code>SELECT * FROM jobs LIMIT 10</code></li>
+      <li><code>SELECT title, relevance_score FROM jobs<br>WHERE relevance_score >= 0.6<br>ORDER BY relevance_score DESC</code></li>
+      <li><code>SELECT source, COUNT(*) AS n<br>FROM jobs GROUP BY source</code></li>
+      <li><code>SELECT * FROM audit_log<br>ORDER BY timestamp DESC LIMIT 20</code></li>
+      <li><code>SELECT application_status, COUNT(*)<br>FROM jobs GROUP BY application_status</code></li>
+    </ul>
+    <p class="muted small">Click a snippet to load it into the query box.</p>
+  </aside>
+
+  <section class="db-content">
+    <h2>Schema: <code>{{ selected }}</code></h2>
+    <table class="schema-table">
+      <thead>
+        <tr><th>#</th><th>Column</th><th>Type</th><th>Null?</th><th>Default</th><th>PK</th></tr>
+      </thead>
+      <tbody>
+        {% for col in schema %}
+        <tr>
+          <td class="muted">{{ col.cid }}</td>
+          <td><code>{{ col.name }}</code></td>
+          <td><span class="tag">{{ col.type or '—' }}</span></td>
+          <td>{{ '—' if col.notnull else '✓' }}</td>
+          <td class="muted">{{ col.default or '—' }}</td>
+          <td>{{ '🔑' if col.pk else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:28px;">SQL Playground <span class="muted small">— read-only (SELECT / WITH / EXPLAIN / PRAGMA)</span></h2>
+    <form id="sql-form" hx-post="/db/query" hx-target="#sql-result" hx-swap="innerHTML">
+      <textarea name="sql" id="sql-input" rows="5" placeholder="SELECT * FROM jobs LIMIT 10">{{ sample_sql }}</textarea>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+        <button class="btn primary" type="submit">Run query</button>
+        <span class="muted small">Cmd/Ctrl + Enter to run</span>
+      </div>
+    </form>
+    <div id="sql-result"></div>
+
+    <h2 style="margin-top:28px;">Recent operations <span class="muted small">— every status change, note, bulk action</span></h2>
+    <p class="muted small">
+      This is the <code>audit_log</code> table. Each time you click a status button or save a note,
+      the SQL statement that ran is recorded here. <strong>This is what's happening behind the scenes.</strong>
+    </p>
+    <table class="audit-table">
+      <thead>
+        <tr><th>When</th><th>Operation</th><th>Job</th><th>SQL</th><th>Parameters</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in audit %}
+        <tr>
+          <td class="muted small">{{ entry.timestamp[:19].replace('T', ' ') }}</td>
+          <td><span class="tag">{{ entry.operation }}</span></td>
+          <td>{% if entry.job_id %}<a href="#" onclick="htmx.ajax('GET','/job/{{ entry.job_id }}',{target:'#detail-drawer',swap:'innerHTML'}); document.getElementById('detail-drawer').classList.add('open'); return false;">#{{ entry.job_id }}</a>{% else %}—{% endif %}</td>
+          <td><code class="sql-snippet">{{ entry.sql_statement }}</code></td>
+          <td><code class="params-snippet">{{ entry.parameters }}</code></td>
+          <td class="muted small">{{ entry.description }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted" style="text-align:center; padding:20px;">No operations yet — try changing a job's status in the Browse tab.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<aside id="detail-drawer" class="detail-drawer"></aside>
+
+<script>
+  // Load cheatsheet snippets into the query textarea on click
+  document.querySelectorAll('.db-cheats code').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      document.getElementById('sql-input').value = el.innerText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    });
+  });
+  // Cmd/Ctrl + Enter to submit the form
+  document.getElementById('sql-input').addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      htmx.trigger(document.getElementById('sql-form'), 'submit');
+    }
+  });
+  // Drawer close handler (shared with Browse/Pipeline)
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#close-drawer')) {
+      document.getElementById('detail-drawer').classList.remove('open');
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.getElementById('detail-drawer').classList.remove('open');
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,41 @@
+<div class="kanban-card" id="card-{{ job.id }}" data-id="{{ job.id }}" data-status="{{ job.application_status }}">
+  <div class="card-title">{{ job.title }}</div>
+  <div class="card-meta">
+    <span>{{ job.company }}</span>
+    {% if job.cover_letter and job.cover_letter|trim %}
+      <span class="has-letter-pill" title="Cover letter generated">📝</span>
+    {% endif %}
+    <span class="score-pill {{ 'high' if (job.relevance_score or 0) >= 0.6 else 'mid' if (job.relevance_score or 0) >= 0.4 else 'low' }}">{{ '%.2f' % (job.relevance_score or 0) }}</span>
+  </div>
+  <div class="card-meta" style="margin-top:4px;">
+    <span class="muted">{{ job.location or '—' }}</span>
+    <span class="tag">{{ job.source }}</span>
+    {% if job.applied_at %}
+      {# A job can be moved back out of Applied; applied_at survives that on
+         purpose. Only badge it green while the job is still at or past the
+         Applied stage — otherwise a green tick in the Bookmarked column reads
+         as "done" when it isn't. #}
+      {% set applied_days = job.applied_at|days_ago %}
+      {% set still_applied = job.application_status in ('applied', 'interview', 'offer', 'rejected') %}
+      <span class="tag applied-date{{ '' if still_applied else ' reverted' }}"
+            title="{% if still_applied %}Moved to Applied on {{ job.applied_at[:10] }}{% else %}Was applied on {{ job.applied_at[:10] }}, then moved back{% endif %}{% if applied_days is not none %} — {{ applied_days }} day{{ 's' if applied_days != 1 }} ago{% endif %}">
+        {{ '✓' if still_applied else '↩' }} {{ job.applied_at[:10] }}
+      </span>
+    {% endif %}
+  </div>
+  <div class="card-actions">
+    {% set order = ['bookmarked', 'applied', 'interview', 'offer', 'rejected'] %}
+    {% set idx = order.index(job.application_status) if job.application_status in order else -1 %}
+    {% if idx >= 0 and idx < order|length - 1 and job.application_status not in ('offer', 'rejected') %}
+      {% set next_status = order[idx + 1] %}
+      <button class="btn js-advance" type="button" data-id="{{ job.id }}" data-target-status="{{ next_status }}">
+        → {{ STATUS_LABELS[next_status] }}
+      </button>
+    {% endif %}
+    {% if job.application_status != 'rejected' %}
+      <button class="btn ghost danger js-advance" type="button" data-id="{{ job.id }}" data-target-status="rejected">
+        Reject
+      </button>
+    {% endif %}
+  </div>
+</div>

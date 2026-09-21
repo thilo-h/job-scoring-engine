@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="outbound">
+  {% if not companies %}
+    <div class="banner banner-warn">
+      Noch kein Watchlist-Poll gelaufen. Einmal ausführen:
+      <code>python -m src.main --profile {{ profile }} watchlist-poll</code>
+    </div>
+  {% else %}
+    <p class="muted small ob-weekline">
+      {{ companies|length }} Firmen
+      {% for t, n in tier_counts %} · Tier {{ t }}: {{ n }}{% endfor %}
+      · letzter Poll {{ last_poll[:16].replace('T', ' ') }}
+    </p>
+
+    <section class="stat-card ob-wide">
+      <h3>Neue Treffer <span class="muted small">— 14 Tage, ohne Bestand</span></h3>
+      {% if hits %}
+        <table class="ob-table">
+          <thead><tr><th>Erkannt</th><th>Tier</th><th>Firma</th><th>Stelle</th><th>Quelle</th><th>Score</th><th>Meldung</th></tr></thead>
+          <tbody>
+            {% for h in hits %}
+              <tr>
+                <td class="muted">{{ h.detected_at[:10] }}</td>
+                <td><span class="tag">{{ h.tier or 'KW' }}</span></td>
+                <td>{{ h.company }}</td>
+                <td>
+                  <a href="{{ h.url }}" target="_blank" rel="noopener">{{ h.title }}</a>
+                  {% for r in h.reasons.split(';') if r.startswith('kw:') %}<span class="tag">«{{ r[3:] }}»</span>{% endfor %}
+                </td>
+                <td class="muted">{{ h.source }}</td>
+                <td class="muted">{% if h.relevance_score is not none %}{{ '%.2f' % h.relevance_score }}{% endif %}</td>
+                <td class="muted small">{{ {'alerted': 'Sofort-Mail', 'pending': 'Mail offen', 'digest_only': 'Digest'}.get(h.alert_status, h.alert_status) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Keine neuen Treffer.</p>
+      {% endif %}
+    </section>
+
+    <section class="stat-card ob-wide">
+      <h3>Firmen &amp; Abdeckung</h3>
+      <p class="muted small" style="margin-top:-6px;">
+        <em>Quellen</em> = welche Quellen je einen Treffer für die Firma lieferten.
+        Nur eine Quelle heisst Abdeckungslücke — etwa wenn ein Portal von einer Firma
+        ausschliesslich Senior-Stellen zeigt und die Karriereseite nicht abgefragt wird.
+      </p>
+      <table class="ob-table">
+        <thead><tr><th>Tier</th><th>Firma</th><th>Quellen</th><th class="num">Stellen</th><th>Karriereseite</th><th>Letzter Treffer</th></tr></thead>
+        <tbody>
+          {% for c in companies %}
+            <tr title="{{ c.why }}">
+              <td><span class="tag">{{ c.tier }}</span></td>
+              <td>
+                {{ c.name }}
+                {% if c.channel == 'direct_email' %}<span class="tag">E-Mail-Kontakt</span>{% endif %}
+              </td>
+              <td>
+                {% for s in c.sources %}<span class="tag">{{ s }}</span> {% endfor %}
+                {% if c.sources|length == 1 %}<span class="ob-flag">Abdeckungslücke</span>{% endif %}
+                {% if not c.sources %}<span class="ob-flag">keine Treffer</span>{% endif %}
+              </td>
+              <td class="num">{{ c.job_count }}</td>
+              <td class="small">
+                {% if c.channel == 'direct_email' %}
+                  <span class="muted">wird nicht gescrapt</span>
+                {% elif not c.careers_url and not c.has_ats %}
+                  <span class="ob-flag">URL fehlt</span>
+                {% elif c.careers_page_note %}
+                  <span class="ob-flag">{{ c.careers_page_note }}</span>
+                {% elif c.careers_page_jobs is not none %}
+                  {{ c.careers_page_jobs }} Stellen{% if c.has_ats %} <span class="muted">via {{ c.has_ats }}</span>{% endif %}
+                {% endif %}
+              </td>
+              <td class="muted">{{ (c.last_hit_at or '')[:10] }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

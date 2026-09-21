@@ -1,0 +1,38 @@
+{# FIFA-Karte mit Nonagon — lazy geladen aus job_detail.html. Logik: src/radar.py
+   Ein-/ausklappbar; der Zustand gilt für alle Stellen und wird in base.html
+   (localStorage "jf-radar-open") gemerkt. #}
+<details class="radar-details" open>
+  <summary class="radar-summary">
+    <span class="radar-summary-title">Radar</span>
+    <span class="radar-summary-ovr radar-tier-{{ radar.tier }}">Web {{ radar.ovr }}</span>
+    <span class="muted small">{{ radar.position }} · Score {{ radar.score_points }}</span>
+  </summary>
+  <div class="radar-card radar-card-{{ radar.tier }}">
+    {{ radar.svg(220) | safe }}
+    <div class="radar-side">
+      <div class="radar-head">
+        <span class="radar-ovr" title="Web: die neun Achsen, mit den Profil-Gewichten gemittelt (0–100). Ohne Boosts und Penalties.">{{ radar.ovr }}</span>
+        <span class="radar-pos" title="Rollenfamilie aus dem Titel">{{ radar.position }}</span>
+      </div>
+      <div class="radar-stats">
+        {% for a in radar.axes %}
+          <div class="radar-stat" title="{{ a.label }} — Gewicht {{ '%.2f' % a.weight }}{% if a.key == 'mentoring' %} · {{ team_note }}{% endif %}">
+            <span class="radar-stat-val">{{ a.value }}</span>
+            <span class="radar-stat-key">{{ a.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="small radar-foot" title="Warum die grosse Zahl vom Score abweicht: Boosts und Penalties liegen ausserhalb des Webs.">
+        <span class="muted">Web {{ radar.ovr }}</span>
+        {% for label, pts in radar.bridge %}
+          <span class="{{ 'radar-plus' if pts > 0 else 'radar-minus' }}">{{ '+' if pts > 0 else '−' }} {{ label }} {{ pts | abs }}</span>
+        {% endfor %}
+        <span>→ <strong>Score {{ radar.score_points }}</strong></span>
+        {% if radar.capped %}<span class="muted">(gedeckelt)</span>{% endif %}
+        {% if radar.experience_penalty and job.min_years_experience is not none %}
+          <span class="muted">· {{ job.min_years_experience }} J. Erfahrung gefordert</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</details>

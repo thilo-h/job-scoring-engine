@@ -1,0 +1,18 @@
+{
+  "_comment": "The same tool, but with strengths/gaps returned as an XML-tagged single string instead of an array. Real Haiku output does this sometimes; triage._normalize_to_list has to repair it. Used only by the test that covers that path.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "submit_match_score",
+      "input": {
+        "score": 4,
+        "reason": "Seniority mismatch.",
+        "strengths": "<item>Domain is a match</item><item>Language requirements are met</item>",
+        "gaps": "<item>Posting asks for eight years</item>"
+      }
+    }
+  ],
+  "usage": {"input_tokens": 200, "output_tokens": 90}
+}

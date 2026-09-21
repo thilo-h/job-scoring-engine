@@ -1,0 +1,280 @@
+{# Application section inside the job detail drawer.
+   Two states: (a) no cover letter yet → Generate button + lang/format dropdowns.
+               (b) cover letter present → editable textarea + Send button.
+
+   Agent-Formulare (2026-09-17): Fehler sichtbar statt still (htmx tauscht
+   4xx/5xx nicht aus), Knopf gesperrt während der Anfrage, kein Doppelklick.
+#}
+{% macro agent_request_hooks(disable="find button") -%}
+  hx-sync="this:drop"
+  hx-disabled-elt="{{ disable }}"
+  hx-on::before-request="const b = this.querySelector('.agent-error'); if (b) b.hidden = true;"
+  hx-on::send-error="jfShowError(this.querySelector('.agent-error'), event)"
+  hx-on::response-error="jfShowError(this.querySelector('.agent-error'), event)"
+{%- endmacro %}
+
+<div id="application-section" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border);">
+  <h3 style="font-size:11px; text-transform:uppercase; color:var(--muted); margin:0 0 10px;">Application</h3>
+  <div hx-get="/job/{{ job.id }}/outbound" hx-trigger="load" hx-swap="outerHTML"></div>
+
+  {% set has_letter = job.cover_letter and job.cover_letter|trim != '' %}
+  {% set briefing = job.cover_letter_briefing | from_json %}
+  {% set match_details = job.match_details | from_json %}
+  {% set has_score = job.match_score is not none %}
+  {% set apply_method = job.apply_method | from_json %}
+  {% set channel_icons = {'email':'📧', 'portal':'🔗', 'linkedin':'💼', 'job_board':'📋', 'phone':'📞', 'unclear':'❓'} %}
+  {% set channel_labels = {'email':'Email', 'portal':'Portal', 'linkedin':'LinkedIn', 'job_board':'Job-Board', 'phone':'Phone', 'unclear':'Unclear'} %}
+
+  {# ---- Triage / fit-check ---- #}
+  <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+    <form hx-post="/job/{{ job.id }}/triage"
+          hx-target="#application-section"
+          hx-swap="outerHTML"
+          hx-indicator="#triage-spinner"
+          {{ agent_request_hooks() }}
+          style="display:inline;">
+      <button class="btn" type="submit">
+        {% if has_score %}Re-check fit{% else %}Check fit{% endif %}
+      </button>
+      <span id="triage-spinner" class="htmx-indicator muted small">Checking…</span>
+      <span class="agent-error error small" role="alert" hidden></span>
+    </form>
+    {% if has_score %}
+      {% set warn = job.match_score < 6 %}
+      <div class="triage-pill {{ 'triage-warn' if warn else 'triage-good' }}"
+           style="flex:1 1 280px; padding:8px 12px; border-radius:6px;
+                  border:1px solid {{ 'var(--warn, #b07a1a)' if warn else 'var(--good, #3a8c4a)' }};
+                  background:{{ 'rgba(176,122,26,0.12)' if warn else 'rgba(58,140,74,0.10)' }};">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <strong style="font-size:14px;">Match {{ '%.1f' % job.match_score }}/10</strong>
+          <span class="muted small">vs. Relevance {{ '%.2f' % (job.relevance_score or 0) }}</span>
+          {% if warn %}<span class="small" style="color:var(--warn, #b07a1a);">⚠ Likely mismatch</span>{% endif %}
+        </div>
+        <div style="font-size:12.5px; margin-top:4px; line-height:1.45;">{{ job.match_reason }}</div>
+        {% set strengths_list = match_details.strengths | as_list if match_details else [] %}
+        {% set gaps_list = match_details.gaps | as_list if match_details else [] %}
+        {% if strengths_list or gaps_list %}
+          <details style="margin-top:6px;">
+            <summary class="muted small" style="cursor:pointer;">Strengths / gaps</summary>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; font-size:12px;">
+              {% if strengths_list %}
+                <div>
+                  <div class="muted small" style="margin-bottom:2px;">✓ Strengths</div>
+                  <ul style="margin:0; padding-left:18px;">
+                    {% for s in strengths_list %}<li>{{ s }}</li>{% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+              {% if gaps_list %}
+                <div>
+                  <div class="muted small" style="margin-bottom:2px;">⚠ Gaps</div>
+                  <ul style="margin:0; padding-left:18px;">
+                    {% for g in gaps_list %}<li>{{ g }}</li>{% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            </div>
+          </details>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {# ---- Score breakdown (deterministic relevance_score explained) ---- #}
+  <details class="score-breakdown-details" style="margin-bottom:12px;">
+    <summary class="muted small" style="cursor:pointer; user-select:none;">
+      🧮 Why this score? — break down the {{ '%.2f' % (job.relevance_score or 0) }} relevance score
+    </summary>
+    <div hx-get="/job/{{ job.id }}/score-breakdown"
+         hx-trigger="toggle from:closest details once"
+         hx-swap="innerHTML"
+         style="margin-top:8px;">
+      <span class="muted small">loading breakdown…</span>
+    </div>
+  </details>
+
+  {# ---- Apply-method detection ---- #}
+  <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+    <form hx-post="/job/{{ job.id }}/detect-apply-method"
+          hx-target="#application-section"
+          hx-swap="outerHTML"
+          hx-indicator="#apm-spinner"
+          {{ agent_request_hooks() }}
+          style="display:inline;">
+      <button class="btn" type="submit">
+        {% if apply_method %}Re-detect apply method{% else %}Detect apply method{% endif %}
+      </button>
+      <span id="apm-spinner" class="htmx-indicator muted small">Searching…</span>
+      <span class="agent-error error small" role="alert" hidden></span>
+    </form>
+    {% if apply_method %}
+      <div style="flex:1 1 280px; padding:10px 12px; border-radius:6px; border:1px solid var(--border); background:var(--bg-soft, #1c1c1f);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <strong style="font-size:14px;">
+            {{ channel_icons.get(apply_method.primary_channel, '❓') }}
+            {{ channel_labels.get(apply_method.primary_channel, apply_method.primary_channel) }}
+          </strong>
+          {% if apply_method.email %}
+            <span style="font-size:13px;">→ <code>{{ apply_method.email }}</code></span>
+          {% endif %}
+          {% if apply_method.portal_url %}
+            <a href="{{ apply_method.portal_url }}" target="_blank" rel="noopener" class="btn"
+               style="padding:3px 8px; font-size:12px;">Open portal ↗</a>
+          {% endif %}
+          {% if apply_method.apply_url and apply_method.apply_url != apply_method.portal_url %}
+            <a href="{{ apply_method.apply_url }}" target="_blank" rel="noopener" class="btn"
+               style="padding:3px 8px; font-size:12px;">Apply ↗</a>
+          {% endif %}
+        </div>
+        {% if apply_method.required_documents %}
+          <div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap; align-items:center;">
+            <span class="muted small">Required:</span>
+            {% for doc in apply_method.required_documents %}
+              <span class="tag" style="font-size:11px;">{{ doc }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if apply_method.notes %}
+          <div class="muted small" style="margin-top:6px; font-size:12px; line-height:1.45;">{{ apply_method.notes }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {# ---- BRIEFING (Company · Role · Profile fit) ---- #}
+  {# Eigenständige Aktion — separat vom Cover-Letter UND Fit-Check.
+     Nutzt das Haiku-Modell, ~$0.002 + ~3-5s pro Briefing.
+     Wenn schon vorhanden → anzeigen + "Regenerate"-Button.
+     Wenn leer → leere Box mit "Generate Briefing"-Button. #}
+  {% set has_briefing = briefing and (briefing.company_summary or briefing.role_summary or briefing.profile_summary) %}
+
+  <div style="margin-bottom:12px; padding:10px 12px; background:var(--bg-soft, #1c1c1f); border:1px solid var(--border); border-radius:6px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <div style="font-size:11px; text-transform:uppercase; color:var(--muted);">
+        Briefing — Company · Role · Profile fit
+      </div>
+      <form hx-post="/job/{{ job.id }}/briefing/generate"
+            hx-target="#application-section"
+            hx-swap="outerHTML"
+            hx-indicator="#briefing-spinner"
+            {{ agent_request_hooks() }}
+            style="display:inline; margin:0;">
+        <button class="btn" type="submit" style="padding:3px 10px; font-size:12px;">
+          {% if has_briefing %}Regenerate briefing{% else %}Generate briefing{% endif %}
+        </button>
+        <span id="briefing-spinner" class="htmx-indicator muted small">Researching… (~5-10s, ~$0.01 with web search)</span>
+        <span class="agent-error error small" role="alert" hidden></span>
+      </form>
+    </div>
+
+    {% if has_briefing %}
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-top:10px; font-size:13px; line-height:1.45;">
+        {% if briefing.company_summary %}
+          <div>
+            <div class="muted small" style="margin-bottom:4px;">🏢 Company</div>
+            <div>{{ briefing.company_summary }}</div>
+          </div>
+        {% endif %}
+        {% if briefing.role_summary %}
+          <div>
+            <div class="muted small" style="margin-bottom:4px;">💼 Role</div>
+            <div>{{ briefing.role_summary }}</div>
+          </div>
+        {% endif %}
+        {% if briefing.profile_summary %}
+          <div>
+            <div class="muted small" style="margin-bottom:4px;">🎯 Profile fit</div>
+            <div>{{ briefing.profile_summary }}</div>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Every company claim carries the search result it came from, so the
+         summary can be checked rather than taken on trust. #}
+      {% if briefing.company_facts %}
+        <details style="margin-top:8px;">
+          <summary class="muted small" style="cursor:pointer;">
+            🔗 {{ briefing.company_facts | length }} sourced company fact{{ '' if briefing.company_facts|length == 1 else 's' }}
+            {% if briefing.web_searches %}· {{ briefing.web_searches }} search{{ '' if briefing.web_searches == 1 else 'es' }}{% endif %}
+          </summary>
+          <ul class="briefing-sources small">
+            {% for f in briefing.company_facts %}
+              <li>
+                {{ f.fact }}
+                <a href="{{ f.source_url }}" target="_blank" rel="noopener nofollow">source</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% elif briefing.web_searches %}
+        <div class="muted small" style="margin-top:8px;">
+          🔗 {{ briefing.web_searches }} search{{ '' if briefing.web_searches == 1 else 'es' }} ran, no company claim needed a source —
+          the summary works from the posting.
+        </div>
+      {% endif %}
+
+      {# Objections that survived the repair rounds. An unsourced claim has to be
+         visible; silently keeping it would defeat the check. #}
+      {% if briefing.findings %}
+        <div class="banner banner-warn small" style="margin-top:8px;">
+          <strong>Unverified in this briefing:</strong>
+          <ul style="margin:4px 0 0 18px;">
+            {% for f in briefing.findings %}<li>{{ f.message }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="muted small" style="margin-top:8px; font-size:12px; line-height:1.45;">
+        Click <strong>Generate briefing</strong> for a 3-point summary: who the
+        company is, what the role actually does, and an honest profile-fit
+        assessment. Company claims are researched and each one is shown with the
+        source it came from; a claim that cannot be sourced is dropped or flagged.
+      </div>
+    {% endif %}
+  </div>
+
+
+  {# ---- Letter editor — the applicant's own draft ----
+     Always present, with or without a saved letter: this is where the draft is
+     pasted or written. Saving runs the deterministic review and returns the
+     findings; nothing here produces text. #}
+
+  {% set checks = job.cover_letter_checks | from_json %}
+  {% if has_letter %}{% include "partials/letter_checks.html" %}{% endif %}
+    <form hx-post="/job/{{ job.id }}/cover-letter/save"
+          hx-target="#cl-saved-{{ job.id }}"
+          hx-swap="innerHTML"
+          style="margin-bottom:8px;">
+      <textarea name="cover_letter" rows="20"
+                placeholder="Paste or write your letter here as markdown, then Save draft. The style guide in assets/ describes the structure the checks expect."
+                style="width:100%; font-family: ui-monospace, Menlo, monospace; font-size:12.5px;">{{ job.cover_letter or '' }}</textarea>
+
+      <div style="display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;">
+        <div style="flex:1 1 280px;">
+          <label class="muted small">Recipient email</label>
+          <input type="email" name="contact_email_display" value="{{ job.contact_email or '' }}" placeholder="jobs@company.com"
+                 hx-post="/job/{{ job.id }}/contact-email"
+                 hx-trigger="change"
+                 hx-target="#contact-saved-{{ job.id }}"
+                 hx-swap="innerHTML"
+                 hx-vals='js:{contact_email: event.target.value}'
+                 style="width:100%;">
+          <span id="contact-saved-{{ job.id }}" class="muted small"></span>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+        <button type="submit" class="btn">Save draft</button>
+        <span id="cl-saved-{{ job.id }}" class="muted small"></span>
+
+        <a class="btn ghost" href="/job/{{ job.id }}/cover-letter/download?format=docx"
+           download title="Download as Word (.docx) for offline editing">
+          📄 Word
+        </a>
+        <a class="btn ghost" href="/job/{{ job.id }}/cover-letter/download?format=pdf"
+           download title="Download as PDF">
+          📑 PDF
+        </a>
+      </div>
+    </form>
+</div>

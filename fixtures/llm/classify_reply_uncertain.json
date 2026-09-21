@@ -1,0 +1,9 @@
+{
+  "_comment": "Hand-written. Confidence below AUTO_BUMP_CONFIDENCE — recorded but never auto-bumped, so it shows up for manual review instead.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {"type": "tool_use", "name": "classify_reply", "input": {"classification": "needs_review", "confidence": 0.44, "summary": "Asks a question about availability without stating a decision."}}
+  ],
+  "usage": {"input_tokens": 460, "output_tokens": 55}
+}

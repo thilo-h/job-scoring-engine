@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div id="scrape-banner" class="scrape-banner"
+     hx-get="/scrape/widget"
+     hx-trigger="load, every 5s"
+     hx-swap="innerHTML"
+     hx-target="this">
+  <span class="muted small">Loading scrape status…</span>
+</div>
+
+<div class="pipeline-hint muted">
+  Drag cards · click for details · 📝 = cover letter ready
+</div>
+<div id="kanban-wrap">
+  {% include "partials/kanban_columns.html" %}
+</div>
+
+<aside id="detail-drawer" class="detail-drawer"></aside>
+
+<script>
+  // ---- POST helper -----------------------------------------------------
+  async function setStatus(jobId, status) {
+    const fd = new FormData();
+    fd.append('status', status);
+    const res = await fetch(`/job/${jobId}/status`, { method: 'POST', body: fd });
+    return res.ok;
+  }
+
+  // ---- Reload kanban (used after a successful status change) ----------
+  function reloadKanban() {
+    htmx.ajax('GET', '/pipeline', { target: '#kanban-wrap', swap: 'innerHTML' });
+  }
+
+  // ---- Initialize SortableJS on each column body ----------------------
+  function initSortable() {
+    document.querySelectorAll('.kanban-col-body').forEach((el) => {
+      // Skip if already initialized (reload reuses same DOM nodes briefly)
+      if (el._sortable) return;
+      el._sortable = Sortable.create(el, {
+        group: 'pipeline',
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        onAdd: async (evt) => {
+          const card = evt.item;
+          const newStatus = evt.to.dataset.status;
+          const jobId = card.dataset.id;
+          card.classList.add('saving');
+          const ok = await setStatus(jobId, newStatus);
+          if (ok) {
+            // Refresh whole kanban so column counts + button states are right
+            reloadKanban();
+          } else {
+            // Revert by reload
+            card.classList.remove('saving');
+            reloadKanban();
+          }
+        },
+      });
+    });
+  }
+
+  // ---- Click handlers --------------------------------------------------
+  document.addEventListener('click', async (e) => {
+    // Action button → POST status
+    const btn = e.target.closest('.js-advance');
+    if (btn) {
+      e.preventDefault();
+      const jobId = btn.dataset.id;
+      const target = btn.dataset.targetStatus;
+      btn.disabled = true;
+      const ok = await setStatus(jobId, target);
+      if (ok) reloadKanban();
+      return;
+    }
+    // Card click (not on button) → open detail drawer
+    const card = e.target.closest('.kanban-card');
+    if (card && !e.target.closest('.btn, button')) {
+      const id = card.dataset.id;
+      const drawer = document.getElementById('detail-drawer');
+      htmx.ajax('GET', `/job/${id}`, { target: '#detail-drawer', swap: 'innerHTML' });
+      drawer.classList.add('open');
+    }
+    if (e.target.closest('#close-drawer')) {
+      document.getElementById('detail-drawer').classList.remove('open');
+    }
+  });
+
+  // Esc closes drawer
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.getElementById('detail-drawer').classList.remove('open');
+  });
+
+  // Re-init Sortable after every htmx swap (because the DOM nodes are new)
+  document.body.addEventListener('htmx:afterSwap', (e) => {
+    if (e.target && e.target.id === 'kanban-wrap') initSortable();
+  });
+
+  // Also init once on first load (Sortable script may load after DOMContentLoaded)
+  if (typeof Sortable !== 'undefined') {
+    initSortable();
+  } else {
+    window.addEventListener('load', initSortable);
+  }
+</script>
+{% endblock %}

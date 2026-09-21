@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Finder — {{ active_tab|default('browse')|capitalize }}</title>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version() }}">
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" defer></script>
+  <script>
+    // Theme — persisted, defaults to system preference.
+    (function () {
+      const stored = localStorage.getItem('jf-theme');
+      const theme = stored || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.dataset.theme = theme;
+    })();
+    function toggleTheme() {
+      const cur = document.documentElement.dataset.theme;
+      const next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('jf-theme', next);
+    }
+    // Maximize/restore the right-side detail drawer. Event delegate on
+    // document — inline onclick on the swapped-in button was unreliable.
+    // Radar im Drawer: auf-/zugeklappt merken, gilt für alle Stellen.
+    // "toggle" blubbert nicht hoch → im Capture-Modus lauschen.
+    document.addEventListener('toggle', (e) => {
+      if (!e.target.classList || !e.target.classList.contains('radar-details')) return;
+      try { localStorage.setItem('jf-radar-open', e.target.open ? '1' : '0'); } catch (_) {}
+    }, true);
+    document.addEventListener('htmx:afterSwap', () => {
+      let open = true;
+      try { open = localStorage.getItem('jf-radar-open') !== '0'; } catch (_) {}
+      document.querySelectorAll('.radar-details').forEach((d) => { d.open = open; });
+    });
+    // Chat im Drawer: Fehler sichtbar machen. htmx tauscht bei Netzwerkfehlern
+    // und 4xx/5xx nichts aus — ein gerade neu startender Server sah deshalb aus
+    // wie ein Chat, der nicht funktioniert (2026-09-17).
+    window.jfRequestError = (evt) => {
+      const xhr = evt.detail && evt.detail.xhr;
+      if (!xhr || !xhr.status) return 'Server nicht erreichbar — läuft das Dashboard?';
+      let detail = '';
+      try {
+        detail = JSON.parse(xhr.responseText).detail || '';
+      } catch (_) {
+        // Agent-Routen antworten mit einem HTML-Schnipsel (<div class="error">…)
+        const doc = new DOMParser().parseFromString(xhr.responseText || '', 'text/html');
+        detail = (doc.body.textContent || '').trim().slice(0, 300);
+      }
+      return `Fehler ${xhr.status}${detail ? ': ' + detail : ''}`;
+    };
+    window.jfShowError = (box, evt) => {
+      if (!box) return;
+      box.textContent = jfRequestError(evt);
+      box.hidden = false;
+    };
+    window.jfChatError = (panel, evt) => {
+      const box = panel.querySelector('.chat-error');
+      if (!box) return;
+      const fromForm = evt.detail.elt && evt.detail.elt.matches && evt.detail.elt.matches('.chat-input-form');
+      const text = jfRequestError(evt);
+      box.textContent = fromForm ? `${text}${/[.?!]$/.test(text) ? '' : '.'} Deine Nachricht steht noch im Feld.` : text;
+      box.hidden = false;
+    };
+    window.jfChatLoadError = (container, evt) => {
+      if (evt.detail.elt !== container) return;  // Fehler aus dem Panel zeigt das Panel selbst
+      const url = container.getAttribute('hx-get');
+      const msg = document.createElement('div');
+      msg.className = 'error small';
+      msg.textContent = 'Chat konnte nicht geladen werden — ' + jfRequestError(evt);
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'btn small';
+      retry.style.marginTop = '6px';
+      retry.textContent = 'Erneut laden';
+      retry.addEventListener('click', () => htmx.ajax('GET', url, {source: container, target: container, swap: 'innerHTML'}));
+      container.replaceChildren(msg, retry);
+    };
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('#maximize-drawer');
+      if (!btn) return;
+      const drawer = document.getElementById('detail-drawer');
+      if (!drawer) return;
+      const on = drawer.classList.toggle('maximized');
+      btn.textContent = on ? '⤡' : '⤢';
+    });
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Finder</div>
+    <nav class="tabs">
+      <a href="/" class="tab {% if active_tab == 'outbound' %}active{% endif %}">Outbound</a>
+      <a href="/watchlist" class="tab {% if active_tab == 'watchlist' %}active{% endif %}">Watchlist</a>
+      <a href="/pipeline" class="tab {% if active_tab == 'pipeline' %}active{% endif %}">Pipeline</a>
+      <a href="/replies" class="tab {% if active_tab == 'replies' %}active{% endif %}">Inbox</a>
+      <span class="tab-sep">Intake</span>
+      <a href="/browse" class="tab {% if active_tab == 'browse' %}active{% endif %}">Browse</a>
+      <a href="/stats" class="tab {% if active_tab == 'stats' %}active{% endif %}">Stats</a>
+      <a href="/db" class="tab {% if active_tab == 'db' %}active{% endif %}">DB</a>
+    </nav>
+    <div class="topbar-right">
+      {% set _ap = active_profile() %}
+      <form action="/profile/switch" method="post" class="profile-switcher" style="display:inline-flex;align-items:center;gap:6px;">
+        <label for="profile-select" class="muted small">Profile:</label>
+        <select id="profile-select" name="profile" onchange="this.form.submit()">
+          {% for p in available_profiles() %}
+            <option value="{{ p }}" {% if _ap.profile == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <button class="btn ghost" id="add-job-btn"
+              onclick="document.getElementById('manual-add-modal').classList.add('open')">
+        + Add job by URL
+      </button>
+      <button class="btn ghost" id="scrape-btn"
+              hx-post="/scrape/trigger" hx-swap="none"
+              hx-on::after-request="document.getElementById('scrape-status').textContent = 'started — keep this tab open ~25 min so it finishes'"
+              title="Scrape ~7 sources for ~20-30 min. Keep this tab open the whole time — closing it can interrupt the scrape on cloud deployments.">
+        Scrape now
+      </button>
+      <span id="scrape-status" class="muted small"></span>
+      <button class="btn ghost" onclick="toggleTheme()" aria-label="Toggle theme">◐</button>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ── Manual Add Job Modal ────────────────────────────────────────── -->
+  <div id="manual-add-modal" class="modal-backdrop manual-add-modal">
+    <div class="modal" role="dialog" aria-labelledby="manual-add-title">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <h2 id="manual-add-title">+ Add job by URL</h2>
+        <button class="btn ghost" type="button"
+                onclick="document.getElementById('manual-add-modal').classList.remove('open')">✕</button>
+      </div>
+      <p class="muted small" style="margin:0 0 14px;">
+        Paste the URL of a job posting. <strong>Auto-extract</strong> fetches the page and lets Haiku fill the fields (~$0.005). Review, edit, save.
+      </p>
+
+      <form id="manual-add-form" onsubmit="return manualAddSubmit(event)">
+        <label class="muted small">Job URL *</label>
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+          <input type="url" name="url" id="ma-url" required
+                 placeholder="https://..." style="flex:1;">
+          <button class="btn primary" type="button" id="ma-extract-btn"
+                  onclick="manualAddExtract()">✨ Auto-extract</button>
+        </div>
+        <div id="ma-extract-status" class="muted small" style="margin-bottom:10px;"></div>
+
+        <label class="muted small">Title *</label>
+        <input type="text" name="title" id="ma-title" required
+               style="margin-bottom:10px;">
+
+        <label class="muted small">Company *</label>
+        <input type="text" name="company" id="ma-company" required
+               style="margin-bottom:10px;">
+
+        <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:8px; margin-bottom:10px;">
+          <div>
+            <label class="muted small">Location</label>
+            <input type="text" name="location" id="ma-location"
+                   placeholder="Barcelona / Remote / ...">
+          </div>
+          <div>
+            <label class="muted small">Workload %</label>
+            <input type="number" name="workload_percent" id="ma-workload"
+                   min="10" max="100" step="10">
+          </div>
+          <div>
+            <label class="muted small">Remote?</label>
+            <select name="is_remote" id="ma-remote">
+              <option value="">—</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:10px;">
+          <div>
+            <label class="muted small">Job Type</label>
+            <select name="job_type" id="ma-job-type">
+              <option value="">—</option>
+              <option value="full_time">Full-time</option>
+              <option value="part_time">Part-time</option>
+              <option value="internship">Internship</option>
+              <option value="working_student">Working Student</option>
+              <option value="contract">Contract</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted small">Languages (comma-separated)</label>
+            <input type="text" name="languages" id="ma-languages"
+                   placeholder="English, Spanish, ...">
+          </div>
+        </div>
+
+        <label class="muted small">Description</label>
+        <textarea name="description" id="ma-description" rows="6"
+                  style="margin-bottom:10px;"
+                  placeholder="Job description / requirements..."></textarea>
+
+        <label class="muted small">Initial Status</label>
+        <select name="application_status" id="ma-status" style="margin-bottom:14px;">
+          <option value="bookmarked" selected>Bookmarked</option>
+          <option value="new">New</option>
+          <option value="applied">Applied</option>
+        </select>
+
+        <div style="display:flex; align-items:center; gap:10px; justify-content:flex-end;">
+          <span id="ma-save-status" class="muted small" style="flex:1;"></span>
+          <button class="btn ghost" type="button"
+                  onclick="document.getElementById('manual-add-modal').classList.remove('open')">Cancel</button>
+          <button class="btn primary" type="submit">Save Job</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ── Manual-add modal helpers ────────────────────────────────
+    function manualAddExtract() {
+      const url = document.getElementById('ma-url').value.trim();
+      const status = document.getElementById('ma-extract-status');
+      const btn = document.getElementById('ma-extract-btn');
+      if (!url) { status.textContent = '⚠ paste a URL first'; return; }
+      btn.disabled = true;
+      status.textContent = 'fetching + extracting (Haiku)...';
+      const fd = new FormData();
+      fd.append('url', url);
+      fetch('/jobs/extract-url', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.ok) {
+            status.textContent = '⚠ ' + (data.error || 'extraction failed — fill manually');
+            return;
+          }
+          const e = data.extracted;
+          if (e.title) document.getElementById('ma-title').value = e.title;
+          if (e.company) document.getElementById('ma-company').value = e.company;
+          if (e.location) document.getElementById('ma-location').value = e.location;
+          if (e.description) document.getElementById('ma-description').value = e.description;
+          if (e.workload_percent != null) document.getElementById('ma-workload').value = e.workload_percent;
+          if (e.is_remote === true) document.getElementById('ma-remote').value = 'yes';
+          else if (e.is_remote === false) document.getElementById('ma-remote').value = 'no';
+          if (e.job_type) document.getElementById('ma-job-type').value = e.job_type;
+          if (e.languages && e.languages.length) document.getElementById('ma-languages').value = e.languages.join(', ');
+          status.textContent = '✓ extracted ($' + (e.cost_usd || 0).toFixed(4) + ') — review + save';
+        })
+        .catch(err => { status.textContent = '⚠ ' + err.message; })
+        .finally(() => { btn.disabled = false; });
+    }
+
+    function manualAddSubmit(event) {
+      event.preventDefault();
+      const form = document.getElementById('manual-add-form');
+      const status = document.getElementById('ma-save-status');
+      status.textContent = 'saving...';
+      const fd = new FormData(form);
+      fetch('/jobs/manual-add', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.ok) { status.textContent = '⚠ ' + (data.error || 'save failed'); return; }
+          const verb = data.is_new ? 'added' : 'updated';
+          status.textContent = '✓ ' + verb + ' — score ' + (data.score != null ? data.score.toFixed(2) : '—');
+          // Refresh the browse table if visible, then close after a beat
+          setTimeout(() => {
+            document.getElementById('manual-add-modal').classList.remove('open');
+            const ff = document.getElementById('filter-form');
+            if (ff && window.htmx) htmx.trigger(ff, 'submit');
+            form.reset();
+            status.textContent = '';
+            document.getElementById('ma-extract-status').textContent = '';
+          }, 1200);
+        })
+        .catch(err => { status.textContent = '⚠ ' + err.message; });
+      return false;
+    }
+
+    // Esc closes the modal
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.getElementById('manual-add-modal').classList.remove('open');
+      }
+    });
+  </script>
+</body>
+</html>

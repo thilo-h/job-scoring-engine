@@ -1,0 +1,129 @@
+{# Outbound im Job-Drawer — der einzige Ort, um eine Bewerbung zu erfassen.
+   Ersetzt seit 2026-09-14 auch "Applied outside the tool? Mark as sent
+   manually": die Empfänger-Adresse ist hier ein optionales Feld (nur bei
+   E-Mail / Direktkontakt sichtbar) und füttert weiterhin den Reply-Tracker.
+   Lazy geladen aus application_section.html.
+
+   Upload (2026-09-17): die Datei, die tatsächlich ins Portal ging (PDF/Word),
+   wird das Archiv unter data/cover_letters/sent/ — statt der vom Tool
+   gerenderten Fassung. hx-encoding am Formular, damit hx-include die Datei
+   mitschickt.
+
+   Antwort-Domain (2026-09-17): für alle Kanäle. Auch Portal-Bewerbungen
+   bekommen Antworten per Mail; Adresse und Message-ID nur bei E-Mail /
+   Direktkontakt, sonst zählt allein die Domain. #}
+{% set refresh = "if (document.getElementById('detail-drawer')) htmx.ajax('GET', '/job/" ~ job.id ~ "', {target: '#detail-drawer', swap: 'innerHTML'}); const ff = document.getElementById('filter-form'); if (ff) htmx.trigger(ff, 'submit');" %}
+<div id="outbound-badge" class="ob-badge">
+  {% if not application %}
+    <form class="ob-badge-form" onsubmit="return false;">
+      <div class="btn-row" style="gap:6px;">
+        <span class="muted small">Outbound:</span>
+        <select name="channel"
+                hx-on:change="this.closest('form').querySelector('.ob-msgid').hidden = !['email', 'direct_contact'].includes(this.value)">
+          {% for value, label in [('ats', 'ATS / Portal'), ('email', 'E-Mail'), ('direct_contact', 'Direktkontakt'), ('referral', 'Referral')] %}
+            <option value="{{ value }}" {% if value == default_channel %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" type="button"
+                hx-post="/job/{{ job.id }}/outbound" hx-include="closest form" hx-vals='{"status": "drafted"}'
+                hx-target="#outbound-badge" hx-swap="outerHTML">Als Entwurf erfassen</button>
+        <button class="btn primary" type="button"
+                hx-post="/job/{{ job.id }}/outbound" hx-include="closest form" hx-vals='{"status": "sent"}'
+                hx-target="#outbound-badge" hx-swap="outerHTML"
+                hx-on::after-request="{{ refresh }}" hx-indicator="#ob-busy-{{ job.id }}"
+                title="Verschickt nichts. Hält fest, dass du dich beworben hast: setzt den Nachfass-Termin und verknüpft eingehende Antworten mit dieser Bewerbung.">Als versendet markieren</button>
+        <span id="ob-busy-{{ job.id }}" class="htmx-indicator muted small">Speichere…</span>
+      </div>
+      <div class="muted small ob-hint">Erfasst nur. Dieses Werkzeug verschickt keine Bewerbungen — du bewirbst dich selbst und hältst es hier fest.</div>
+      <div class="ob-tracking">
+        <input type="text" inputmode="email" autocomplete="off" name="recipient_email" value="{{ job.contact_email or '' }}"
+               placeholder="Empfänger oder Antwort-Domain, z.B. jobs@firma.ch oder @firma.ch">
+        <input type="text" name="message_id" class="ob-msgid" placeholder="Message-ID (optional)"{% if default_channel not in ('email', 'direct_contact') %} hidden{% endif %}>
+        <span class="muted small">Optional — damit Antworten automatisch dieser Bewerbung zugeordnet werden. Bei Portal-Bewerbungen die Domain, von der Antworten kommen.</span>
+      </div>
+    </form>
+
+  {% else %}
+    {# Antwort-Tracking aktiv: volle Adresse, sonst reine Domain als @domain #}
+    {# Tracking aktiv erst mit Versanddatum. Davor ist eine Domain nur für den
+       Entwurf vorgemerkt und füllt das Feld vor, statt im Banner zu stehen. #}
+    {% set tracking_target = job.application_recipient_email or ('@' ~ job.application_recipient_domain if job.application_recipient_domain else '') %}
+    {% set tracked = tracking_target if job.application_sent_at else '' %}
+    {% set draft_domain = job.application_recipient_domain if (job.application_recipient_domain and not job.application_sent_at) else '' %}
+    {% set recipient_prefill = ('@' ~ draft_domain) if draft_domain else (job.contact_email or '') %}
+    <div class="banner banner-info" style="margin:0 0 8px;">
+      Bewerbung <span class="tag">{{ application.status }}</span>
+      · {{ {'ats': 'ATS / Portal', 'email': 'E-Mail', 'direct_contact': 'Direktkontakt', 'referral': 'Referral'}.get(application.channel, application.channel) }}
+      {% if application.sent_at %}· versendet {{ application.sent_at[:10] }}{% endif %}
+      {% if tracked %}→ <code>{{ tracked }}</code>
+        <a href="#" class="small" onclick="const e = document.getElementById('ob-edit-{{ job.id }}'); e.hidden = false; e.querySelector('input').focus(); return false;">ändern</a>{% endif %}
+      {% if application.status == 'sent' and application.followup_due %}· nachfassen ab {{ application.followup_due }}{% endif %}
+      {% if application.replied_at %}· Antwort {{ application.replied_at[:10] }}{% endif %}
+      · <a href="/">Outbound →</a>
+    </div>
+
+    <form class="ob-badge-form" onsubmit="return false;">
+      <div class="btn-row" style="gap:6px;">
+        {% if application.status == 'drafted' %}
+          <button class="btn primary" type="button"
+                  hx-post="/job/{{ job.id }}/outbound/advance" hx-include="closest form" hx-vals='{"action": "sent"}'
+                  hx-target="#outbound-badge" hx-swap="outerHTML"
+                  hx-on::after-request="{{ refresh }}" hx-indicator="#ob-busy-{{ job.id }}"
+                  title="Verschickt nichts. Hält fest, dass die Bewerbung raus ist.">Als versendet markieren</button>
+          <button class="btn ghost" type="button"
+                  hx-post="/job/{{ job.id }}/outbound/advance" hx-vals='{"action": "stale"}'
+                  hx-target="#outbound-badge" hx-swap="outerHTML">Verwerfen</button>
+        {% elif application.status == 'sent' %}
+          <button class="btn" type="button"
+                  hx-post="/job/{{ job.id }}/outbound/advance" hx-vals='{"action": "followed_up"}'
+                  hx-target="#outbound-badge" hx-swap="outerHTML">Nachgefasst</button>
+          <button class="btn" type="button"
+                  hx-post="/job/{{ job.id }}/outbound/advance" hx-vals='{"action": "replied"}'
+                  hx-target="#outbound-badge" hx-swap="outerHTML">Antwort erhalten</button>
+        {% elif application.status == 'followed_up' %}
+          <button class="btn" type="button"
+                  hx-post="/job/{{ job.id }}/outbound/advance" hx-vals='{"action": "replied"}'
+                  hx-target="#outbound-badge" hx-swap="outerHTML">Antwort erhalten</button>
+        {% endif %}
+        <span id="ob-busy-{{ job.id }}" class="htmx-indicator muted small">Speichere…</span>
+      </div>
+
+      {% set mail_channel = application.channel in ('email', 'direct_contact') %}
+      {% if not tracked %}
+        {% if application.status == 'drafted' %}
+          <div class="ob-tracking">
+            <input type="text" inputmode="email" autocomplete="off" name="recipient_email" value="{{ recipient_prefill }}"
+                   placeholder="{{ 'Empfänger oder Domain, z.B. jobs@firma.ch oder @firma.ch' if mail_channel else 'Antwort-Domain, z.B. @firma.ch' }}">
+            {% if mail_channel %}<input type="text" name="message_id" placeholder="Message-ID (optional)">{% endif %}
+            <span class="muted small">Optional — damit Antworten automatisch dieser Bewerbung zugeordnet werden.</span>
+          </div>
+        {% elif application.status in ('sent', 'followed_up') %}
+          <details style="margin-top:6px;">
+            <summary class="muted small" style="cursor:pointer;">{{ 'Empfänger' if mail_channel else 'Antwort-Domain' }} fürs Antwort-Tracking nachtragen</summary>
+            <div class="ob-tracking">
+              <input type="text" inputmode="email" autocomplete="off" name="recipient_email" value="{{ recipient_prefill }}"
+                     placeholder="{{ 'Empfänger oder Domain, z.B. jobs@firma.ch oder @firma.ch' if mail_channel else 'Antwort-Domain, z.B. @firma.ch' }}">
+              {% if mail_channel %}<input type="text" name="message_id" placeholder="Message-ID (optional)">{% endif %}
+              <button class="btn" type="button"
+                      hx-post="/job/{{ job.id }}/outbound/recipient" hx-include="closest form"
+                      hx-target="#outbound-badge" hx-swap="outerHTML">Speichern</button>
+            </div>
+          </details>
+        {% endif %}
+      {% else %}
+        {# Korrektur einer eingetragenen Adresse/Domain — über "ändern" im Banner geöffnet #}
+        <div id="ob-edit-{{ job.id }}" class="ob-tracking" hidden>
+          <input type="text" inputmode="email" autocomplete="off" name="recipient_email" value="{{ tracked }}"
+                 placeholder="{{ 'Empfänger oder Domain, z.B. jobs@firma.ch oder @firma.ch' if mail_channel else 'Antwort-Domain, z.B. @firma.ch' }}">
+          {% if mail_channel %}<input type="text" name="message_id" placeholder="Message-ID (optional, sonst bleibt die alte)">{% endif %}
+          <button class="btn" type="button"
+                  hx-post="/job/{{ job.id }}/outbound/recipient" hx-include="closest form"
+                  hx-target="#outbound-badge" hx-swap="outerHTML">Speichern</button>
+          <a href="#" class="muted small" onclick="this.closest('.ob-tracking').hidden = true; return false;">abbrechen</a>
+          <span class="muted small">Schon zugeordnete Antworten bleiben bei dieser Bewerbung.</span>
+        </div>
+      {% endif %}
+    </form>
+  {% endif %}
+  {% if error %}<div class="error small" style="margin-top:6px;">{{ error }}</div>{% endif %}
+</div>

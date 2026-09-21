@@ -1,0 +1,35 @@
+# Keep personal data and local state out of the image.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.gitignore
+.env
+.env.*
+.DS_Store
+
+# Local data (jobs DB, exports, cover-letters) — comes from the volume
+data/
+
+# Private assets and personal profiles — never in an image
+assets/private/
+config/profile_*.yaml
+!config/profile_example.yaml
+
+# Dev-only
+tests/
+docs/
+*.ipynb
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+

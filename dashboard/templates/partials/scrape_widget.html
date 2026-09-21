@@ -1,0 +1,85 @@
+{# Scrape progress widget — polled every 5s by the pipeline banner.
+   When `running`, shows per-source progress + live log tail. When idle,
+   shows last run summary or a "no scrape yet" placeholder.
+
+   Important side-effect: polling this endpoint keeps the Fly machine
+   awake during a scrape. As long as the user is on the Pipeline tab,
+   the subprocess can't get auto-stop-killed.
+#}
+
+<div class="scrape-widget {{ 'running' if running else 'idle' }}">
+  {% if running %}
+    {# ── RUNNING STATE ─────────────────────────────────────────── #}
+    <div class="scrape-summary">
+      <div class="scrape-counts">
+        <strong>⏳ Scraping…</strong>
+        <span class="muted small">
+          {{ total_found }} jobs found ({{ total_new }} new)
+          {% if current_scraper %} · currently <code>{{ current_scraper }}</code>{% endif %}
+        </span>
+      </div>
+      <div class="scrape-actions">
+        <span class="muted small">profile: <strong>{{ profile }}</strong></span>
+      </div>
+    </div>
+
+    {% if per_source %}
+      <table class="scrape-table">
+        <tbody>
+          {% for src, counts in per_source.items() %}
+            <tr>
+              <td><code>{{ src }}</code></td>
+              <td class="num">{{ counts.found }} found</td>
+              <td class="num"><strong>{{ counts.new }}</strong> new</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if log_tail %}
+      <details style="margin-top:8px;">
+        <summary class="muted small" style="cursor:pointer;">Live log (last lines)</summary>
+        <pre class="scrape-log">{{ log_tail }}</pre>
+      </details>
+    {% endif %}
+
+    <div class="scrape-keepalive muted small">
+      ⓘ Don't close this tab — it keeps the scrape alive (polls every 5s).
+    </div>
+
+  {% elif finished_at %}
+    {# ── IDLE STATE — recent run finished ──────────────────────── #}
+    <div class="scrape-summary">
+      <div class="scrape-counts">
+        <span class="muted small">Last scrape:</span>
+        <strong>{{ total_found }} jobs</strong>
+        <span class="muted small">({{ total_new }} new) · finished {{ finished_at }}</span>
+      </div>
+      <div class="scrape-actions">
+        <span class="muted small">profile: <strong>{{ profile }}</strong></span>
+      </div>
+    </div>
+    {% if per_source %}
+      <table class="scrape-table compact">
+        <tbody>
+          {% for src, counts in per_source.items() %}
+            <tr>
+              <td><code>{{ src }}</code></td>
+              <td class="num">{{ counts.new }} new</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+  {% else %}
+    {# ── IDLE STATE — never run since uvicorn started ──────────── #}
+    <div class="scrape-summary">
+      <span class="muted small">
+        No scrape since dashboard started. Click "Scrape now" in the header to begin.
+        On cloud deployments: keep this tab open during the scrape.
+      </span>
+    </div>
+  {% endif %}
+</div>

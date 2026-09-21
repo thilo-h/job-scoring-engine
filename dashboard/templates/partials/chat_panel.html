@@ -1,0 +1,59 @@
+{# Chat panel — mode tabs + message list + input. Rendered into the drawer
+   tab container. The form posts to /job/<id>/chat?mode=<mode> and swaps the
+   message list.
+
+   Fehler und Wartezeit sichtbar (2026-09-17): Ladehinweis und gesperrtes
+   Formular während Claude antwortet, Meldung bei Netzwerk- oder Serverfehler
+   (Helfer jfChatError in base.html). Die Nachricht bleibt bei Fehlern im Feld. #}
+<div class="chat-panel" data-job-id="{{ job.id }}" data-mode="{{ mode }}"
+     hx-on::before-request="const b = this.querySelector('.chat-error'); if (b) b.hidden = true;"
+     hx-on::send-error="jfChatError(this, event)"
+     hx-on::response-error="jfChatError(this, event)">
+  <div class="chat-tabs">
+    {% set modes = [
+        ('letter_review',       '📝 Letter Review'),
+        ('interview_prep',      '🎤 Interview Prep'),
+        ('application_advisor', '📮 Application Advisor'),
+    ] %}
+    {% for m, label in modes %}
+      <button type="button" class="chat-tab {% if mode == m %}active{% endif %}"
+              hx-get="/job/{{ job.id }}/chat?mode={{ m }}"
+              hx-target=".chat-panel"
+              hx-swap="outerHTML">
+        {{ label }}
+      </button>
+    {% endfor %}
+    <span style="flex:1;"></span>
+    <button type="button" class="btn ghost small"
+            hx-post="/job/{{ job.id }}/chat/clear?mode={{ mode }}"
+            hx-target="#chat-messages"
+            hx-swap="outerHTML"
+            hx-confirm="Delete chat history for this mode?">
+      🗑 Clear
+    </button>
+  </div>
+
+  {% include "partials/chat_messages.html" %}
+
+  <form class="chat-input-form"
+        hx-post="/job/{{ job.id }}/chat?mode={{ mode }}"
+        hx-target="#chat-messages"
+        hx-swap="outerHTML"
+        hx-sync="this:drop"
+        hx-disabled-elt="find textarea, find button[type='submit']"
+        hx-on::after-request="if (event.detail.successful) { const t = this.querySelector('textarea[name=message]'); t.value = ''; t.focus(); }">
+    <textarea name="message" rows="7" required
+              placeholder="Message to Claude... (Cmd/Ctrl+Enter to send)"
+              onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();this.form.requestSubmit();}"></textarea>
+    <div class="chat-input-row">
+      <span class="muted small chat-mode-hint">
+        {% if mode == 'letter_review' %}Revises the draft you wrote
+        {% elif mode == 'interview_prep' %}With web_search for company research
+        {% else %}Advises on channel + attachments{% endif %}
+      </span>
+      <span class="muted small chat-busy">✨ Claude antwortet …{% if mode == 'interview_prep' %} mit Web-Suche dauert es etwas länger{% endif %}</span>
+      <button type="submit" class="btn primary">Send</button>
+    </div>
+  </form>
+  <div class="chat-error error small" role="alert" hidden></div>
+</div>

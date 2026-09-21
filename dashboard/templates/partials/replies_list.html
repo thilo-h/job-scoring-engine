@@ -1,0 +1,73 @@
+{# Inbox partial — rendered standalone for HTMX swaps and inside replies.html. #}
+{% if not replies %}
+  <div class="replies-empty">
+    <p>No replies tracked yet.</p>
+    <p class="small">
+      When you send an application via the dashboard, its <code>Message-ID</code>
+      gets stored. Once a recruiter replies, "Poll now" surfaces it here.
+    </p>
+  </div>
+{% else %}
+  {% for r in replies %}
+    {% set cls = r.classification or 'unclassified' %}
+    {% set is_actioned = r.auto_bumped == 1 %}
+    <div id="reply-{{ r.id }}" class="reply-card {% if is_actioned %}actioned{% endif %}">
+      <div class="reply-meta">
+        <span class="badge-cls badge-cls-{{ cls }}">{{ cls.replace('_', ' ') }}</span>
+        {% if r.classification_confidence is not none %}
+          <span title="Haiku confidence: {{ '%.2f'|format(r.classification_confidence) }}">
+            conf
+            <span class="conf-bar">
+              <span class="conf-fill" style="width: {{ (r.classification_confidence * 100)|round(0)|int }}%;"></span>
+            </span>
+          </span>
+        {% endif %}
+        {% if r.match_method %}
+          <span class="badge-match" title="How we matched the reply to a job">
+            via {{ r.match_method.replace('_', ' ') }}
+          </span>
+        {% endif %}
+        {% if r.received_at %}
+          <span>{{ r.received_at|days_ago }}d ago</span>
+        {% endif %}
+        <span>From: {{ r.from_email or '(unknown)' }}</span>
+      </div>
+
+      <div class="reply-subject">{{ r.subject or '(no subject)' }}</div>
+
+      <div class="reply-job">
+        {% if r.job_id %}
+          → <a href="/browse?job_id={{ r.job_id }}">{{ r.job_company or '?' }} — {{ r.job_title or '?' }}</a>
+        {% else %}
+          <em class="muted">unmatched</em>
+        {% endif %}
+      </div>
+
+      {% if r.body_excerpt %}
+        <div class="reply-body">{{ r.body_excerpt }}<span class="reply-body-fade"></span></div>
+        <button class="show-more-btn" onclick="toggleBody(this)">show more</button>
+      {% endif %}
+
+      {% if not is_actioned and r.job_id %}
+        <div class="reply-actions">
+          <span class="muted small">Set status →</span>
+          {% for s in actionable_statuses %}
+            <button class="btn ghost small"
+                    onclick="applyStatus({{ r.id }}, '{{ s }}')">
+              {{ s|capitalize }}
+            </button>
+          {% endfor %}
+          <button class="btn ghost small"
+                  onclick="dismissReply({{ r.id }})"
+                  style="margin-left:auto;" title="Mark as seen, leave job status untouched">
+            ✕ Dismiss
+          </button>
+        </div>
+      {% elif is_actioned %}
+        <div class="reply-actions">
+          <span class="muted small">✓ actioned</span>
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}

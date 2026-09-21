@@ -1,0 +1,24 @@
+{
+  "_comment": "Hand-written, not recorded. Exercises triage.py's parsing: a forced tool_use block, cached-prompt usage counters, and strengths/gaps as proper arrays.",
+  "model": "claude-haiku-4-5",
+  "stop_reason": "tool_use",
+  "content": [
+    {
+      "type": "tool_use",
+      "name": "submit_match_score",
+      "input": {
+        "score": 7.5,
+        "reason": "Solid overlap on the data-engineering core and the location fits. The posting leans more on streaming infrastructure than the profile shows, so there is a real gap to bridge.",
+        "strengths": [
+          "Pipeline and ETL experience maps directly onto the main responsibility",
+          "Location and workload both inside the stated preferences"
+        ],
+        "gaps": [
+          "No demonstrated streaming or Kafka experience",
+          "Posting mentions on-call rotation, which the profile does not address"
+        ]
+      }
+    }
+  ],
+  "usage": {"input_tokens": 210, "output_tokens": 180, "cache_read_input_tokens": 1850, "cache_creation_input_tokens": 0}
+}

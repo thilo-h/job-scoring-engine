@@ -1,0 +1,131 @@
+{# Score breakdown — explains the deterministic relevance_score (0-1)
+   component-by-component, contrasted with the LLM-based match_score (0-10).
+   Loaded on-demand into a `<details>` block in application_section.html.
+#}
+{% set rel = bd.final_score or 0 %}
+{% set match = job.match_score %}
+{# Disagreement detection: scale relevance to 0-10 and compare. >2 points apart = flag. #}
+{% set rel_scaled = (rel * 10) | round(1) %}
+{% set disagrees = (match is not none) and ((match - rel_scaled) | abs > 2) %}
+
+<div class="score-breakdown">
+  <div class="score-breakdown-header">
+    <div>
+      <span class="muted small">Relevance (deterministic)</span>
+      <strong style="font-size:16px;">{{ '%.2f' % rel }}</strong>
+      <span class="muted small">/ 1.00</span>
+    </div>
+    {% if match is not none %}
+      <div>
+        <span class="muted small">Match (LLM fit-check)</span>
+        <strong style="font-size:16px;">{{ '%.1f' % match }}</strong>
+        <span class="muted small">/ 10</span>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if disagrees %}
+    <div class="score-breakdown-disagree">
+      ⚠ Disagreement: deterministic says <strong>{{ '%.1f' % rel_scaled }}/10</strong>,
+      LLM says <strong>{{ '%.1f' % match }}/10</strong>
+      ({{ '%.1f' % (match - rel_scaled) }} points apart).
+      Trust the LLM for nuance, the breakdown below for what drove the deterministic number.
+    </div>
+  {% endif %}
+
+  <table class="score-breakdown-table">
+    <thead>
+      <tr>
+        <th>Factor</th>
+        <th class="num">Raw</th>
+        <th class="num">Weight</th>
+        <th class="num">Contribution</th>
+        <th class="bar"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key, contribution in contribs %}
+        {% set raw = bd.raw_scores[key] %}
+        {% set weight = weights.get(key, 0) %}
+        {% set bar_pct = (contribution / 0.25 * 100) | round(0) %}
+        <tr>
+          <td>{{ key.replace('_', ' ') }}</td>
+          <td class="num">{{ '%.2f' % raw }}</td>
+          <td class="num muted small">× {{ '%.2f' % weight }}</td>
+          <td class="num"><strong>{{ '%+.3f' % contribution }}</strong></td>
+          <td class="bar">
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ [bar_pct, 100] | min }}%;"></div>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+
+      {% if bd.boost %}
+        <tr class="adj boost">
+          <td>boost</td>
+          <td class="num">—</td>
+          <td class="num muted small">+</td>
+          <td class="num"><strong>{{ '%+.3f' % bd.boost }}</strong></td>
+          <td class="bar">
+            <div class="bar-track">
+              <div class="bar-fill bar-boost" style="width: {{ ((bd.boost / 0.12) * 100) | round(0) | int }}%;"></div>
+            </div>
+          </td>
+        </tr>
+      {% endif %}
+      {% if bd.language_boost %}
+        <tr class="adj boost">
+          <td>language boost</td>
+          <td class="num">—</td>
+          <td class="num muted small">+</td>
+          <td class="num"><strong>{{ '%+.3f' % bd.language_boost }}</strong></td>
+          <td class="bar">
+            <div class="bar-track">
+              <div class="bar-fill bar-boost" style="width: {{ ((bd.language_boost / 0.12) * 100) | round(0) | int }}%;"></div>
+            </div>
+          </td>
+        </tr>
+      {% endif %}
+      {% if bd.penalty %}
+        <tr class="adj penalty">
+          <td>penalty</td>
+          <td class="num">—</td>
+          <td class="num muted small">−</td>
+          <td class="num"><strong>−{{ '%.3f' % bd.penalty }}</strong></td>
+          <td class="bar">
+            <div class="bar-track">
+              <div class="bar-fill bar-penalty" style="width: {{ ((bd.penalty / 0.30) * 100) | round(0) | int }}%;"></div>
+            </div>
+          </td>
+        </tr>
+      {% endif %}
+      {% if bd.experience_penalty %}
+        <tr class="adj penalty">
+          <td>experience penalty{% if job.min_years_experience is not none %} ({{ job.min_years_experience }} J. gefordert){% endif %}</td>
+          <td class="num">—</td>
+          <td class="num muted small">−</td>
+          <td class="num"><strong>−{{ '%.3f' % bd.experience_penalty }}</strong></td>
+          <td class="bar">
+            <div class="bar-track">
+              <div class="bar-fill bar-penalty" style="width: {{ ((bd.experience_penalty / 0.30) * 100) | round(0) | int }}%;"></div>
+            </div>
+          </td>
+        </tr>
+      {% endif %}
+
+      <tr class="total">
+        <td><strong>FINAL</strong></td>
+        <td colspan="2" class="muted small">capped to [0, 1]</td>
+        <td class="num"><strong>= {{ '%.3f' % bd.final_score }}</strong></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="muted small score-breakdown-note">
+    Tuning lives in <code>config/profile_{{ job.get('_profile') or '<active>' }}.yaml</code> →
+    <code>preferences.weights / company_tiers / domains / boost_keywords / avoid_keywords</code>.
+    After edits: <code>python -m src.main --profile &lt;name&gt; rescore</code>.
+  </div>
+</div>

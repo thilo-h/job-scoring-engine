@@ -1,0 +1,30 @@
+{% if error %}
+  <div class="sql-error">
+    <strong>Error:</strong> {{ error }}
+  </div>
+{% elif result %}
+  <div class="sql-meta muted small">
+    {{ result.row_count }} row{{ '' if result.row_count == 1 else 's' }}
+    {% if result.truncated %}<span class="tag">truncated to 200</span>{% endif %}
+  </div>
+  {% if result.row_count == 0 %}
+    <div class="muted" style="padding:16px;">No rows.</div>
+  {% else %}
+    <div class="sql-result-wrap">
+      <table class="result-table">
+        <thead>
+          <tr>{% for col in result.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in result.rows %}
+          <tr>
+            {% for col in result.columns %}
+            <td>{% set v = row[col] %}{% if v is none %}<span class="muted">NULL</span>{% else %}{{ v|string|truncate(120, true, '…') }}{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endif %}

@@ -1,0 +1,54 @@
+# Secrets — NEVER commit. .env.example is the tracked template.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Data — local snapshots
+# Profile-scoped: jobs_<profile>.db
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/exports/
+data/backups/
+data/cookies/
+
+# CSV exports (data/jobs_<profile>_export.csv)
+data/*.csv
+
+# Generated output — notification drafts, run logs
+data/outbox/
+data/*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Build / cache
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Personal documents — certificates, references, CV exports. Keep your own
+# CV and attachments under assets/private/, which is never versioned.
+# The markdown files in assets/example/ are dummy inputs and stay tracked.
+assets/private/
+assets/**/*.pdf
+assets/**/*.docx
+assets/**/*.dotx
+/*.docx
+/*.dotx
+*.log

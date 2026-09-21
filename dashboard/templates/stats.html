@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card" style="grid-column: 1 / -1;">
+    <div class="kpi">
+      <div class="kpi-item"><div class="kpi-value">{{ stats.total }}</div><div class="kpi-label">Total jobs</div></div>
+      <div class="kpi-item"><div class="kpi-value">{{ '%.3f' % stats.avg_score }}</div><div class="kpi-label">Avg score</div></div>
+      <div class="kpi-item"><div class="kpi-value">{{ stats.stale_count }}</div><div class="kpi-label">Stale &gt;14d</div></div>
+      {% set bookmarked = (stats.by_status | selectattr('status', 'equalto', 'bookmarked') | list | first) %}
+      {% set applied = (stats.by_status | selectattr('status', 'equalto', 'applied') | list | first) %}
+      {% set interview = (stats.by_status | selectattr('status', 'equalto', 'interview') | list | first) %}
+      <div class="kpi-item"><div class="kpi-value">{{ bookmarked.count if bookmarked else 0 }}</div><div class="kpi-label">Bookmarked</div></div>
+      <div class="kpi-item"><div class="kpi-value">{{ applied.count if applied else 0 }}</div><div class="kpi-label">Applied</div></div>
+      <div class="kpi-item"><div class="kpi-value">{{ interview.count if interview else 0 }}</div><div class="kpi-label">Interview</div></div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <h3>Jobs per day (last 30)</h3>
+    <canvas id="chart-per-day"></canvas>
+  </div>
+  <div class="stat-card">
+    <h3>Score distribution</h3>
+    <canvas id="chart-scores"></canvas>
+  </div>
+  <div class="stat-card">
+    <h3>By source</h3>
+    <canvas id="chart-sources"></canvas>
+  </div>
+  <div class="stat-card">
+    <h3>By status</h3>
+    <canvas id="chart-status"></canvas>
+  </div>
+</div>
+
+<script id="stats-data" type="application/json">{{ stats | tojson }}</script>
+<script>
+  window.addEventListener('load', () => {
+    const data = JSON.parse(document.getElementById('stats-data').textContent);
+    const isDark = document.documentElement.dataset.theme === 'dark';
+    const tickColor = isDark ? '#8b949e' : '#59636e';
+    const gridColor = isDark ? '#2a313c' : '#d1d9e0';
+    const accent = isDark ? '#4f9dff' : '#0969da';
+    Chart.defaults.color = tickColor;
+    Chart.defaults.borderColor = gridColor;
+
+    new Chart(document.getElementById('chart-per-day'), {
+      type: 'line',
+      data: {
+        labels: data.per_day.map(d => d.day),
+        datasets: [{ label: 'Jobs scraped', data: data.per_day.map(d => d.count), borderColor: accent, backgroundColor: accent + '33', tension: 0.25, fill: true }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    new Chart(document.getElementById('chart-scores'), {
+      type: 'bar',
+      data: {
+        labels: data.score_buckets.map(b => b.bucket.toFixed(1)),
+        datasets: [{ label: 'Jobs', data: data.score_buckets.map(b => b.count), backgroundColor: accent }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    new Chart(document.getElementById('chart-sources'), {
+      type: 'doughnut',
+      data: {
+        labels: data.by_source.map(s => s.source),
+        datasets: [{ data: data.by_source.map(s => s.count), backgroundColor: ['#4f9dff','#3fb950','#d29922','#f85149','#a371f7','#e8718d','#56d4dd'] }]
+      }
+    });
+
+    new Chart(document.getElementById('chart-status'), {
+      type: 'doughnut',
+      data: {
+        labels: data.by_status.map(s => s.status),
+        datasets: [{ data: data.by_status.map(s => s.count), backgroundColor: ['#8b949e','#4f9dff','#3fb950','#d29922','#27ae60','#f85149','#666'] }]
+      }
+    });
+  });
+</script>
+{% endblock %}

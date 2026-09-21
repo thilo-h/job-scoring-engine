@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="replies-page">
+  <div class="replies-header">
+    <div>
+      <h2 style="margin:0;">Replies Inbox</h2>
+      <p class="muted small" style="margin:4px 0 0;">
+        {% if last_poll %}
+          Last polled mailbox <code>{{ last_poll.mailbox }}</code> at
+          <strong>{{ last_poll.last_polled_at|days_ago }}</strong> days ago
+          (UID {{ last_poll.last_uid }})
+        {% else %}
+          IMAP poller has never run. Set <code>IMAP_HOST/USER/PASS</code> in
+          <code>.env</code>, then click "Poll now".
+        {% endif %}
+      </p>
+    </div>
+    <div class="replies-actions">
+      <button class="btn primary" id="poll-now-btn" onclick="pollReplies()">
+        ↻ Poll now
+      </button>
+      <span id="poll-status" class="muted small"></span>
+    </div>
+  </div>
+
+  <div id="replies-list">
+    {% include "partials/replies_list.html" %}
+  </div>
+</div>
+
+<style>
+  .replies-page { max-width: 1100px; margin: 16px auto; padding: 0 16px; }
+  .replies-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; margin-bottom: 20px;
+  }
+  .replies-actions { display: flex; gap: 10px; align-items: center; }
+  .reply-card {
+    border: 1px solid var(--border, #2a2a2a);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    background: var(--card-bg, transparent);
+  }
+  .reply-card.actioned { opacity: 0.55; }
+  .reply-card .reply-meta {
+    display: flex; gap: 12px; font-size: 12px; color: var(--muted, #888);
+    margin-bottom: 6px; flex-wrap: wrap;
+  }
+  .reply-card .reply-subject {
+    font-weight: 600; margin: 4px 0;
+  }
+  .reply-card .reply-job a {
+    color: var(--accent, #4a9eff); text-decoration: none;
+  }
+  .reply-card .reply-body {
+    font-size: 13px; line-height: 1.5;
+    margin-top: 8px; white-space: pre-wrap;
+    color: var(--text-secondary, #bbb);
+    max-height: 140px; overflow: hidden;
+    position: relative;
+  }
+  .reply-card .reply-body.expanded { max-height: none; }
+  .reply-card .reply-body-fade {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30px;
+    background: linear-gradient(to bottom, transparent, var(--card-bg, #0f0f0f));
+    pointer-events: none;
+  }
+  .reply-card .reply-body.expanded .reply-body-fade { display: none; }
+  .reply-card .reply-actions {
+    display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
+    align-items: center;
+  }
+  .reply-card .reply-actions form { display: inline; }
+  .reply-card .show-more-btn {
+    background: none; border: 0; color: var(--accent, #4a9eff);
+    cursor: pointer; font-size: 12px; padding: 0;
+  }
+  .badge-cls {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+  }
+  .badge-cls-interview { background: #1e4d2b; color: #7fdc9c; }
+  .badge-cls-rejected { background: #4d1e1e; color: #ff8b8b; }
+  .badge-cls-offer { background: #4d3a1e; color: #ffd07f; }
+  .badge-cls-acknowledgement { background: #2a2a40; color: #b0b0d0; }
+  .badge-cls-needs_review { background: #4d4019; color: #ffe07a; }
+  .badge-cls-unrelated { background: #2a2a2a; color: #888; }
+  .badge-cls-unclassified { background: #2a2a2a; color: #888; }
+  .badge-match {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; background: #1a3340; color: #6cc1ff;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .conf-bar {
+    display: inline-block; width: 40px; height: 4px;
+    background: #333; border-radius: 2px; vertical-align: middle;
+    margin-left: 4px;
+  }
+  .conf-fill { display: block; height: 100%; background: #6cc1ff; border-radius: 2px; }
+  .replies-empty {
+    text-align: center; padding: 50px 20px;
+    color: var(--muted, #888);
+  }
+</style>
+
+<script>
+  function pollReplies() {
+    const btn = document.getElementById('poll-now-btn');
+    const status = document.getElementById('poll-status');
+    btn.disabled = true;
+    status.textContent = 'Connecting to IMAP…';
+    fetch('/replies/poll', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) {
+          status.textContent = '⚠ ' + (data.error || 'poll failed');
+          return;
+        }
+        const s = data.summary;
+        status.textContent =
+          `✓ fetched ${s.fetched}, matched ${s.matched}, ` +
+          `classified ${s.classified}, auto-bumped ${s.bumped}`;
+        // Soft-refresh the list via HTMX
+        if (window.htmx) {
+          htmx.ajax('GET', '/replies', { target: '#replies-list', swap: 'innerHTML' });
+        } else {
+          setTimeout(() => location.reload(), 800);
+        }
+      })
+      .catch(err => { status.textContent = '⚠ ' + err.message; })
+      .finally(() => { btn.disabled = false; });
+  }
+
+  function toggleBody(el) {
+    const body = el.closest('.reply-card').querySelector('.reply-body');
+    body.classList.toggle('expanded');
+    el.textContent = body.classList.contains('expanded') ? 'show less' : 'show more';
+  }
+
+  function applyStatus(replyId, status) {
+    const fd = new FormData();
+    fd.append('status', status);
+    fetch(`/replies/${replyId}/apply-status`, { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const card = document.getElementById(`reply-${replyId}`);
+          if (card) card.classList.add('actioned');
+        } else {
+          alert(data.detail || 'Status apply failed');
+        }
+      });
+  }
+
+  function dismissReply(replyId) {
+    fetch(`/replies/${replyId}/dismiss`, { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const card = document.getElementById(`reply-${replyId}`);
+          if (card) card.classList.add('actioned');
+        }
+      });
+  }
+</script>
+
+{% endblock %}

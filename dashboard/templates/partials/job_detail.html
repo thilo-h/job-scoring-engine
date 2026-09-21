@@ -1,0 +1,71 @@
+<button class="btn ghost maximize" id="maximize-drawer" type="button"
+        title="Toggle width">⤢</button>
+<button class="btn ghost close" id="close-drawer" type="button"
+        title="Close (Esc)">✕</button>
+<h2>{{ job.title }}</h2>
+<div class="meta">
+  <strong>{{ job.company }}</strong> · {{ job.location or '—' }}
+  {% if job.is_remote %} · Remote{% endif %}
+  {% if job.workload_percent %} · {{ job.workload_percent }}%{% endif %}
+</div>
+
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+  <span class="status-pill status-{{ job.application_status }}">{{ STATUS_LABELS.get(job.application_status, job.application_status) }}</span>
+  <span class="tag">Score {{ '%.2f' % (job.relevance_score or 0) }}</span>
+  <span class="tag">{{ job.source }}</span>
+  {% if job.date_posted %}<span class="tag">posted {{ job.date_posted[:10] }}</span>{% endif %}
+  {% if job.date_scraped %}<span class="tag">scraped {{ job.date_scraped[:10] }}</span>{% endif %}
+</div>
+
+<div hx-get="/job/{{ job.id }}/radar" hx-trigger="load" hx-swap="outerHTML">
+  <div class="muted small" style="margin-bottom:14px;">Radar lädt…</div>
+</div>
+
+<div style="margin-bottom:14px;">
+  <h3 style="font-size:11px; text-transform:uppercase; color:var(--muted); margin:0 0 6px;">Status</h3>
+  <div class="btn-row">
+    {% for s in ALL_STATUSES %}
+      <button class="btn {% if s == job.application_status %}primary{% endif %}"
+              hx-post="/job/{{ job.id }}/status"
+              hx-vals='{"status": "{{ s }}"}'
+              hx-target="#detail-drawer" hx-swap="none"
+              hx-on::after-request="htmx.trigger(document.getElementById('filter-form'), 'submit'); htmx.ajax('GET', '/job/{{ job.id }}', {target: '#detail-drawer', swap: 'innerHTML'});">
+        {{ STATUS_LABELS[s] }}
+      </button>
+    {% endfor %}
+  </div>
+</div>
+
+<div style="margin-bottom:14px;">
+  <h3 style="font-size:11px; text-transform:uppercase; color:var(--muted); margin:0 0 6px;">Notes</h3>
+  <form hx-post="/job/{{ job.id }}/notes" hx-target="#notes-saved-{{ job.id }}" hx-swap="innerHTML">
+    <textarea name="notes" placeholder="Eigene Gedanken zu diesem Job…">{{ job.notes or '' }}</textarea>
+    <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+      <button class="btn primary" type="submit">Save notes</button>
+      <span id="notes-saved-{{ job.id }}"></span>
+    </div>
+  </form>
+</div>
+
+<div>
+  <h3 style="font-size:11px; text-transform:uppercase; color:var(--muted); margin:0 0 6px;">Description</h3>
+  <div class="description">{{ job.description or '(no description scraped)' }}</div>
+</div>
+
+<div style="margin-top:18px;">
+  <a href="{{ job.url }}" target="_blank" rel="noopener" class="btn primary">Open original posting ↗</a>
+</div>
+
+{% include "partials/application_section.html" %}
+
+<div style="margin-top:18px;">
+  <h3 style="font-size:11px; text-transform:uppercase; color:var(--muted); margin:0 0 6px;">✨ Chat Assistant</h3>
+  <div id="chat-container-{{ job.id }}"
+       hx-get="/job/{{ job.id }}/chat?mode=cover_letter"
+       hx-trigger="load"
+       hx-swap="innerHTML"
+       hx-on::send-error="jfChatLoadError(this, event)"
+       hx-on::response-error="jfChatLoadError(this, event)">
+    <div class="muted small">Loading chat…</div>
+  </div>
+</div>

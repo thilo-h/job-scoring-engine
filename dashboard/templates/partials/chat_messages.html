@@ -1,0 +1,46 @@
+{# Just the message list — used as HTMX swap target after send / clear / apply. #}
+<div id="chat-messages" class="chat-messages" data-mode="{{ mode }}">
+  {% if not messages %}
+    <div class="chat-empty muted small">
+      {% if mode == 'letter_review' %}
+        Paste or save a draft first, then ask: "Make the intro shorter" or
+        "Does the closing paragraph name the workload from the posting?".
+        This mode revises what you wrote — it does not write for you.
+      {% elif mode == 'interview_prep' %}
+        Try asking: "What questions are likely for this role?" or
+        "What do I need to know about {{ job.company }}?".
+      {% else %}
+        Try asking: "What's the best way to apply for this role?" or
+        "Which attachments should I send?".
+      {% endif %}
+    </div>
+  {% endif %}
+  {% for m in messages %}
+    <div class="chat-msg chat-msg-{{ m.role }}">
+      <div class="chat-msg-role muted small">
+        {{ '🙂 You' if m.role == 'user' else '✨ Claude' }}
+        {% if m.cost_usd %}<span class="muted small">— ${{ '%.4f'|format(m.cost_usd) }}</span>{% endif %}
+      </div>
+      <div class="chat-msg-content">{{ m.content }}</div>
+      {% if m.proposed_edit %}
+        <div class="chat-edit-preview">
+          <details>
+            <summary class="muted small">📝 Proposed revision (click to review before applying)</summary>
+            <pre class="chat-edit-text">{{ m.proposed_edit }}</pre>
+          </details>
+          {% if just_applied_msg_id == m.id %}
+            <span class="chat-applied">✓ Applied</span>
+          {% else %}
+            <button class="btn primary small"
+                    hx-post="/job/{{ job.id }}/chat/apply-edit/{{ m.id }}"
+                    hx-target="#chat-messages"
+                    hx-swap="outerHTML"
+                    hx-confirm="Overwrite the current cover letter with this proposal?">
+              Apply Edit
+            </button>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>

@@ -1,0 +1,76 @@
+{% macro sort_header(label, key, width=None) %}
+  {% set is_active = (sort == key) %}
+  {% set next_dir = 'asc' if (is_active and direction == 'desc') else 'desc' %}
+  <th {% if width %}style="width:{{ width }}"{% endif %}>
+    <a href="#" class="sort-link {% if is_active %}active{% endif %}"
+       hx-get="/browse" hx-target="#browse-table-wrap" hx-swap="outerHTML"
+       hx-include="#filter-form"
+       hx-vals='{"sort": "{{ key }}", "direction": "{{ next_dir }}", "page": "1"}'
+       hx-push-url="true">
+      {{ label }}
+      {% if is_active %}<span class="sort-arrow">{{ '▼' if direction == 'desc' else '▲' }}</span>{% endif %}
+    </a>
+  </th>
+{% endmacro %}
+<div id="browse-table-wrap">
+  <div class="toolbar">
+    <span class="count">{{ total }} job{{ '' if total == 1 else 's' }} matching</span>
+    <span style="flex:1"></span>
+    <span class="muted small">
+      sorted by <strong>{{ sort }}</strong> {{ '↓' if direction == 'desc' else '↑' }} — click any column header to change
+    </span>
+  </div>
+
+  <div id="bulk-bar" class="bulk-bar hidden">
+    <span><b id="bulk-count">0</b> selected</span>
+    <button type="button" class="btn" onclick="bulkApply('bookmarked')">Bookmark</button>
+    <button type="button" class="btn" onclick="bulkApply('ignored')">Ignore</button>
+    <button type="button" class="btn" onclick="bulkApply('new')">Reset to new</button>
+    <span style="flex:1"></span>
+    <button type="button" class="btn ghost"
+            onclick="document.querySelectorAll('input.bulk-check').forEach(c=>c.checked=false); refreshBulkBar();">
+      Clear
+    </button>
+  </div>
+
+  <table class="jobs">
+    <thead>
+      <tr>
+        <th style="width:34px"><input type="checkbox" id="select-all"
+            onchange="document.querySelectorAll('input.bulk-check').forEach(c=>c.checked=this.checked); refreshBulkBar();"></th>
+        {{ sort_header('Score', 'score', '70px') }}
+        {{ sort_header('Title', 'title') }}
+        {{ sort_header('Company', 'company', '124px') }}
+        {{ sort_header('Location', 'location', '100px') }}
+        {{ sort_header('%', 'workload', '58px') }}
+        {{ sort_header('Source', 'source', '78px') }}
+        {{ sort_header('Seen', 'last_seen', '62px') }}
+        {{ sort_header('Status', 'status', '132px') }}
+        <th style="width:186px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+        {% include "partials/job_row.html" %}
+      {% else %}
+        <tr><td colspan="10" class="muted" style="text-align:center; padding:40px;">No jobs match these filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page_count > 1 %}
+  <div class="pagination">
+    <button class="btn" {% if page <= 1 %}disabled{% endif %}
+            hx-get="/browse" hx-target="#browse-table-wrap" hx-swap="outerHTML"
+            hx-include="#filter-form"
+            hx-vals='{"sort": "{{ sort }}", "direction": "{{ direction }}", "page": "{{ page - 1 }}"}'
+            hx-push-url="true">← Prev</button>
+    <span class="muted small">Page {{ page }} / {{ page_count }}</span>
+    <button class="btn" {% if page >= page_count %}disabled{% endif %}
+            hx-get="/browse" hx-target="#browse-table-wrap" hx-swap="outerHTML"
+            hx-include="#filter-form"
+            hx-vals='{"sort": "{{ sort }}", "direction": "{{ direction }}", "page": "{{ page + 1 }}"}'
+            hx-push-url="true">Next →</button>
+  </div>
+  {% endif %}
+</div>
