@@ -25,6 +25,33 @@ def test_fresh_database_initialises(tmp_path):
     db.close()
 
 
+def test_empty_file_initialises_and_takes_an_application(tmp_path):
+    """Empty file → init_schema(), then the first application must be writable.
+
+    Two ordering bugs in _migrate() only ever showed on this path: a backfill
+    that read a column its own ALTER TABLE added later, and a PRAGMA
+    table_info() on a table not yet created, which silently skipped the column
+    migrations hanging off it. The second one passes init_schema() and only
+    fails at the first INSERT, so this test goes as far as that INSERT.
+    """
+    path = tmp_path / "empty.db"
+    path.touch()                                   # zero bytes, like a fresh clone
+    db = JobDatabase(path)
+    db.init_schema()
+    db.upsert_job(make_job())
+    job_id = db.get_jobs(limit=1)[0]["id"]
+    db.update_status(job_id, ApplicationStatus.APPLIED.value)
+    app = db.application_for_job(job_id)
+    assert app is not None and app["status"] == "sent"
+    assert app["counts_for_project_based_learning"] in ("true", "false", "unknown")
+    db.close()
+
+    db = JobDatabase(path)                         # second start on the same file
+    db.init_schema()
+    assert db.application_for_job(job_id)["id"] == app["id"]
+    db.close()
+
+
 def test_init_schema_is_idempotent(tmp_path):
     """The dashboard calls it on every boot; the nightly script calls it again."""
     path = tmp_path / "twice.db"
@@ -196,12 +223,9 @@ def test_csv_export_writes_a_row_per_job(db, tmp_path):
 def test_migration_adds_the_pbl_column_to_an_old_database(tmp_path):
     """A database created before the column existed must gain it on next boot.
 
-    This is the pair to having the column in CREATE TABLE. Both paths are
-    needed, and the bug they guard against is subtle: the migration reads
-    PRAGMA table_info(applications) before the CREATE TABLE statement runs, so
-    on a fresh database it sees an empty set and skips itself. Without the
-    column in the DDL, every create_application() then failed — but only on a
-    fresh clone, never on a long-lived database that had been migrated.
+    This is the pair to having the column in CREATE TABLE: a fresh file gets
+    it from the DDL, an old database from the ALTER TABLE. The fresh path is
+    covered by test_empty_file_initialises_and_takes_an_application.
 
     The "old" state is produced from the real schema with the one column
     dropped, rather than from a hand-written historical DDL, so the rest of the
@@ -228,4 +252,35 @@ def test_migration_adds_the_pbl_column_to_an_old_database(tmp_path):
     value = db.conn.execute(
         "SELECT counts_for_project_based_learning FROM applications").fetchone()[0]
     assert value in ("true", "false", "unknown")
+    db.close()
+
+
+def test_applied_at_backfill_runs_once_on_upgrade(tmp_path):
+    """applied_at is backfilled on the first start after its column appears — only then.
+
+    application_sent_at is the source; the backfill must run after that column
+    exists (otherwise an empty file cannot initialise) and must not run again
+    on later starts, or it would overwrite a deliberately cleared value.
+    """
+    path = tmp_path / "legacy.db"
+    db = JobDatabase(path)
+    db.init_schema()
+    db.upsert_job(make_job())
+    job_id = db.get_jobs(limit=1)[0]["id"]
+    db.conn.execute("ALTER TABLE jobs DROP COLUMN applied_at")
+    db.conn.execute("UPDATE jobs SET application_sent_at = '2026-03-01T09:00:00' WHERE id = ?",
+                    (job_id,))
+    db.conn.commit()
+    db.close()
+
+    db = JobDatabase(path)
+    db.init_schema()
+    assert db.get_job(job_id)["applied_at"] == "2026-03-01T09:00:00"
+    db.conn.execute("UPDATE jobs SET applied_at = NULL WHERE id = ?", (job_id,))
+    db.conn.commit()
+    db.close()
+
+    db = JobDatabase(path)
+    db.init_schema()
+    assert db.get_job(job_id)["applied_at"] is None
     db.close()

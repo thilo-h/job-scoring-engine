@@ -222,107 +222,19 @@ class JobDatabase:
         logger.info(f"Database initialized at {self.db_path}")
 
     def _migrate(self) -> None:
-        """Idempotent schema migrations for DBs created before columns existed."""
-        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(jobs)")}
-        if "notes" not in cols:
-            self.conn.execute("ALTER TABLE jobs ADD COLUMN notes TEXT")
-            logger.info("Migration: added jobs.notes column")
-        if "last_seen_at" not in cols:
-            self.conn.execute("ALTER TABLE jobs ADD COLUMN last_seen_at TEXT")
-            # Backfill last_seen_at from date_scraped so existing jobs aren't
-            # immediately considered stale on first run after upgrade.
-            self.conn.execute(
-                "UPDATE jobs SET last_seen_at = date_scraped WHERE last_seen_at IS NULL"
-            )
-            logger.info("Migration: added jobs.last_seen_at column (backfilled)")
-        if "applied_at" not in cols:
-            self.conn.execute("ALTER TABLE jobs ADD COLUMN applied_at TEXT")
-            # Backfill from the audit trail: every status change is logged, so
-            # the first "Status → applied" entry per job is the date the
-            # application actually went out. MIN() because a job can be moved
-            # in and out of the column repeatedly — the first time is the one
-            # that answers "when did I apply?".
-            self.conn.execute(
-                """UPDATE jobs SET applied_at = (
-                       SELECT MIN(a.timestamp) FROM audit_log a
-                       WHERE a.job_id = jobs.id
-                         AND a.description = 'Status → applied'
-                   )
-                   WHERE applied_at IS NULL"""
-            )
-            # Applications marked before the audit trail existed are only
-            # recorded in application_sent_at, which is authoritative where it
-            # exists. That column is itself added further down, so on a fresh
-            # database it is not there yet — guard on `cols`, which was read
-            # before any migration ran.
-            if "application_sent_at" in cols:
-                self.conn.execute(
-                    "UPDATE jobs SET applied_at = application_sent_at "
-                    "WHERE applied_at IS NULL AND application_sent_at IS NOT NULL"
-                )
-            n = self.conn.execute(
-                "SELECT COUNT(*) FROM jobs WHERE applied_at IS NOT NULL"
-            ).fetchone()[0]
-            logger.info("Migration: added jobs.applied_at column (%s backfilled)", n)
-        # Step 7 — Cover Letter & email submission tracking
-        for col, ddl in [
-            ("cover_letter", "ALTER TABLE jobs ADD COLUMN cover_letter TEXT"),
-            ("cover_letter_lang", "ALTER TABLE jobs ADD COLUMN cover_letter_lang TEXT"),
-            ("cover_letter_format", "ALTER TABLE jobs ADD COLUMN cover_letter_format TEXT"),
-            ("cover_letter_generated_at", "ALTER TABLE jobs ADD COLUMN cover_letter_generated_at TEXT"),
-            ("email_subject", "ALTER TABLE jobs ADD COLUMN email_subject TEXT"),
-            ("email_body_text", "ALTER TABLE jobs ADD COLUMN email_body_text TEXT"),
-            ("contact_email", "ALTER TABLE jobs ADD COLUMN contact_email TEXT"),
-            ("application_sent_at", "ALTER TABLE jobs ADD COLUMN application_sent_at TEXT"),
-            ("cover_letter_briefing", "ALTER TABLE jobs ADD COLUMN cover_letter_briefing TEXT"),
-            # Prüfhinweise zum Anschreiben (JSON-Liste), 2026-09-17
-            ("cover_letter_checks", "ALTER TABLE jobs ADD COLUMN cover_letter_checks TEXT"),
-            ("match_score", "ALTER TABLE jobs ADD COLUMN match_score REAL"),
-            ("match_reason", "ALTER TABLE jobs ADD COLUMN match_reason TEXT"),
-            ("match_details", "ALTER TABLE jobs ADD COLUMN match_details TEXT"),
-            ("match_checked_at", "ALTER TABLE jobs ADD COLUMN match_checked_at TEXT"),
-            ("apply_method", "ALTER TABLE jobs ADD COLUMN apply_method TEXT"),
-            ("apply_method_checked_at", "ALTER TABLE jobs ADD COLUMN apply_method_checked_at TEXT"),
-            ("min_years_experience", "ALTER TABLE jobs ADD COLUMN min_years_experience INTEGER"),
-            # Reply-Tracking (Phase C, 2026-06-21) — Message-ID + recipient
-            # are persisted on send so the IMAP poller can correlate incoming
-            # replies via In-Reply-To/References headers or sender domain.
-            ("application_message_id", "ALTER TABLE jobs ADD COLUMN application_message_id TEXT"),
-            ("application_recipient_email", "ALTER TABLE jobs ADD COLUMN application_recipient_email TEXT"),
-            ("application_recipient_domain", "ALTER TABLE jobs ADD COLUMN application_recipient_domain TEXT"),
-        ]:
-            if col not in cols:
-                self.conn.execute(ddl)
-                logger.info("Migration: added jobs.%s column", col)
-        # Retention prüft pro Job, ob es Audit-Einträge gibt.
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_job ON audit_log(job_id)")
-        app_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(applications)")}
-        if app_cols and "counts_for_project_based_learning" not in app_cols:
-            self.conn.execute(
-                "ALTER TABLE applications ADD COLUMN counts_for_project_based_learning TEXT "
-                "NOT NULL DEFAULT 'unknown' CHECK (counts_for_project_based_learning IN ('true', 'false', 'unknown'))"
-            )
-            for row in self.conn.execute("SELECT id, role FROM applications").fetchall():
-                self.conn.execute(
-                    "UPDATE applications SET counts_for_project_based_learning = ? WHERE id = ?",
-                    (pbl_from_title(row["role"]), row["id"]),
-                )
-            logger.info("Migration: added applications.counts_for_project_based_learning")
-        # Index creation is idempotent and safe to attempt every startup.
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_jobs_last_seen ON jobs(last_seen_at)"
-        )
-        # Lookups during reply-correlation.
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_jobs_app_msgid "
-            "ON jobs(application_message_id) "
-            "WHERE application_message_id IS NOT NULL"
-        )
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_jobs_app_domain "
-            "ON jobs(application_recipient_domain) "
-            "WHERE application_recipient_domain IS NOT NULL"
-        )
+        """Idempotent schema migrations for DBs created before columns existed.
+
+        Die Reihenfolge der vier Abschnitte ist Teil der Logik, nicht Kosmetik:
+        erst alle Tabellen, dann alle Spalten, dann die Backfills, zuletzt die
+        Indizes. Ein Backfill vor dem ALTER TABLE seiner eigenen Spalte fällt
+        nur beim Anlegen einer frischen Datei auf — in einer gewachsenen DB
+        existiert die Spalte längst. Genauso liest ein PRAGMA table_info() auf
+        eine noch nicht angelegte Tabelle eine leere Spaltenliste und lässt
+        jede daran hängende Migration stillschweigend ausfallen.
+        """
+        # ------------------------------------------------------------------
+        # 1. Tabellen — alles, was nicht in SCHEMA_SQL steht
+        # ------------------------------------------------------------------
         # Replies-Table + IMAP-State (Phase C).
         self.conn.executescript(
             """
@@ -373,10 +285,6 @@ class JobDatabase:
                 ON company_profiles(category);
             """
         )
-        cp_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(company_profiles)")}
-        if "industry" not in cp_cols:
-            self.conn.execute("ALTER TABLE company_profiles ADD COLUMN industry TEXT")
-            logger.info("Migration: added company_profiles.industry column")
 
         # Outbound-Umbau (2026-09-14) — Watchlist, Bewerbungen, Kleinzustand.
         self.conn.executescript(
@@ -443,10 +351,9 @@ class JobDatabase:
                 replied_at TEXT,
                 outcome TEXT,
                 notes TEXT,
-                -- Also added by _migrate() for databases created before this
-                -- column existed. It has to be here too: the migration reads
-                -- PRAGMA table_info(applications) before this statement runs,
-                -- so on a fresh database it sees nothing and skips itself.
+                -- Jünger als die Tabelle: steht hier UND als ALTER weiter
+                -- unten, damit eine frische Datei die Spalte direkt bekommt
+                -- und eine gewachsene sie nachträgt.
                 counts_for_project_based_learning TEXT NOT NULL DEFAULT 'unknown'
                     CHECK (counts_for_project_based_learning IN ('true', 'false', 'unknown')),
                 FOREIGN KEY (job_id) REFERENCES jobs(id)
@@ -456,13 +363,6 @@ class JobDatabase:
             CREATE INDEX IF NOT EXISTS idx_applications_status
                 ON applications(status);
 
-            """
-        )
-        wl_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(watchlist_companies)")}
-        if "careers_page_note" not in wl_cols:
-            self.conn.execute("ALTER TABLE watchlist_companies ADD COLUMN careers_page_note TEXT")
-        self.conn.executescript(
-            """
             -- Kleinzustand ohne eigene Tabelle: letzter Keyword-Scan,
             -- letzter Digest-Versand usw.
             CREATE TABLE IF NOT EXISTS app_meta (
@@ -471,6 +371,128 @@ class JobDatabase:
                 updated_at TEXT NOT NULL
             );
             """
+        )
+
+        # ------------------------------------------------------------------
+        # 2. Spalten — ALTER TABLE ADD COLUMN, rein additiv
+        # ------------------------------------------------------------------
+        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(jobs)")}
+        added: set[str] = set()
+        for col, ddl in [
+            ("notes", "ALTER TABLE jobs ADD COLUMN notes TEXT"),
+            ("last_seen_at", "ALTER TABLE jobs ADD COLUMN last_seen_at TEXT"),
+            ("applied_at", "ALTER TABLE jobs ADD COLUMN applied_at TEXT"),
+            # Step 7 — Cover Letter & email submission tracking
+            ("cover_letter", "ALTER TABLE jobs ADD COLUMN cover_letter TEXT"),
+            ("cover_letter_lang", "ALTER TABLE jobs ADD COLUMN cover_letter_lang TEXT"),
+            ("cover_letter_format", "ALTER TABLE jobs ADD COLUMN cover_letter_format TEXT"),
+            ("cover_letter_generated_at", "ALTER TABLE jobs ADD COLUMN cover_letter_generated_at TEXT"),
+            ("email_subject", "ALTER TABLE jobs ADD COLUMN email_subject TEXT"),
+            ("email_body_text", "ALTER TABLE jobs ADD COLUMN email_body_text TEXT"),
+            ("contact_email", "ALTER TABLE jobs ADD COLUMN contact_email TEXT"),
+            ("application_sent_at", "ALTER TABLE jobs ADD COLUMN application_sent_at TEXT"),
+            ("cover_letter_briefing", "ALTER TABLE jobs ADD COLUMN cover_letter_briefing TEXT"),
+            # Prüfhinweise zum Anschreiben (JSON-Liste), 2026-09-17
+            ("cover_letter_checks", "ALTER TABLE jobs ADD COLUMN cover_letter_checks TEXT"),
+            ("match_score", "ALTER TABLE jobs ADD COLUMN match_score REAL"),
+            ("match_reason", "ALTER TABLE jobs ADD COLUMN match_reason TEXT"),
+            ("match_details", "ALTER TABLE jobs ADD COLUMN match_details TEXT"),
+            ("match_checked_at", "ALTER TABLE jobs ADD COLUMN match_checked_at TEXT"),
+            ("apply_method", "ALTER TABLE jobs ADD COLUMN apply_method TEXT"),
+            ("apply_method_checked_at", "ALTER TABLE jobs ADD COLUMN apply_method_checked_at TEXT"),
+            ("min_years_experience", "ALTER TABLE jobs ADD COLUMN min_years_experience INTEGER"),
+            # Reply-Tracking (Phase C, 2026-06-21) — Message-ID + recipient
+            # are persisted on send so the IMAP poller can correlate incoming
+            # replies via In-Reply-To/References headers or sender domain.
+            ("application_message_id", "ALTER TABLE jobs ADD COLUMN application_message_id TEXT"),
+            ("application_recipient_email", "ALTER TABLE jobs ADD COLUMN application_recipient_email TEXT"),
+            ("application_recipient_domain", "ALTER TABLE jobs ADD COLUMN application_recipient_domain TEXT"),
+        ]:
+            if col not in cols:
+                self.conn.execute(ddl)
+                added.add(col)
+                logger.info("Migration: added jobs.%s column", col)
+
+        app_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(applications)")}
+        app_added: set[str] = set()
+        if "counts_for_project_based_learning" not in app_cols:
+            self.conn.execute(
+                "ALTER TABLE applications ADD COLUMN counts_for_project_based_learning TEXT "
+                "NOT NULL DEFAULT 'unknown' CHECK (counts_for_project_based_learning IN ('true', 'false', 'unknown'))"
+            )
+            app_added.add("counts_for_project_based_learning")
+            logger.info("Migration: added applications.counts_for_project_based_learning")
+
+        cp_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(company_profiles)")}
+        if "industry" not in cp_cols:
+            self.conn.execute("ALTER TABLE company_profiles ADD COLUMN industry TEXT")
+            logger.info("Migration: added company_profiles.industry column")
+
+        wl_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(watchlist_companies)")}
+        if "careers_page_note" not in wl_cols:
+            self.conn.execute("ALTER TABLE watchlist_companies ADD COLUMN careers_page_note TEXT")
+            logger.info("Migration: added watchlist_companies.careers_page_note column")
+
+        # ------------------------------------------------------------------
+        # 3. Backfills — nur beim ersten Lauf nach dem jeweiligen ALTER
+        # ------------------------------------------------------------------
+        if "last_seen_at" in added:
+            # Backfill last_seen_at from date_scraped so existing jobs aren't
+            # immediately considered stale on first run after upgrade.
+            self.conn.execute(
+                "UPDATE jobs SET last_seen_at = date_scraped WHERE last_seen_at IS NULL"
+            )
+            logger.info("Migration: backfilled jobs.last_seen_at")
+        if "applied_at" in added:
+            # Backfill from the audit trail: every status change is logged, so
+            # the first "Status → applied" entry per job is the date the
+            # application actually went out. MIN() because a job can be moved
+            # in and out of the column repeatedly — the first time is the one
+            # that answers "when did I apply?".
+            self.conn.execute(
+                """UPDATE jobs SET applied_at = (
+                       SELECT MIN(a.timestamp) FROM audit_log a
+                       WHERE a.job_id = jobs.id
+                         AND a.description = 'Status → applied'
+                   )
+                   WHERE applied_at IS NULL"""
+            )
+            # Applications sent through the tool predate the audit trail in
+            # some DBs; application_sent_at is authoritative where it exists.
+            self.conn.execute(
+                "UPDATE jobs SET applied_at = application_sent_at "
+                "WHERE applied_at IS NULL AND application_sent_at IS NOT NULL"
+            )
+            n = self.conn.execute(
+                "SELECT COUNT(*) FROM jobs WHERE applied_at IS NOT NULL"
+            ).fetchone()[0]
+            logger.info("Migration: backfilled jobs.applied_at (%s rows)", n)
+        if "counts_for_project_based_learning" in app_added:
+            for row in self.conn.execute("SELECT id, role FROM applications").fetchall():
+                self.conn.execute(
+                    "UPDATE applications SET counts_for_project_based_learning = ? WHERE id = ?",
+                    (pbl_from_title(row["role"]), row["id"]),
+                )
+            logger.info("Migration: backfilled applications.counts_for_project_based_learning")
+
+        # ------------------------------------------------------------------
+        # 4. Indizes — idempotent, daher bei jedem Start erneut versucht
+        # ------------------------------------------------------------------
+        # Retention prüft pro Job, ob es Audit-Einträge gibt.
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_job ON audit_log(job_id)")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_last_seen ON jobs(last_seen_at)"
+        )
+        # Lookups during reply-correlation.
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_app_msgid "
+            "ON jobs(application_message_id) "
+            "WHERE application_message_id IS NOT NULL"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jobs_app_domain "
+            "ON jobs(application_recipient_domain) "
+            "WHERE application_recipient_domain IS NOT NULL"
         )
 
     def upsert_job(self, job: Job) -> bool:
