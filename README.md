@@ -1,5 +1,7 @@
 # Job Scoring Engine
 
+[![CI](https://github.com/thilo-h/job-scoring-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/thilo-h/job-scoring-engine/actions/workflows/ci.yml)
+
 Scores job postings against a profile, twice and on purpose: once with a
 deterministic, reproducible rule engine, and once with an LLM that judges what
 rules cannot. Everything downstream — browsing, triage, letter review — exists
@@ -22,10 +24,10 @@ Four files carry most of what is interesting, if you only have a few minutes:
 | [`src/scoring.py`](src/scoring.py) | The deterministic half. Nine weighted dimensions, and a `score_breakdown()` that reconstructs the headline number from its parts so the UI cannot lie about its own arithmetic. |
 | [`src/agent/briefing.py`](src/agent/briefing.py) | Citations as a schema obligation, then a deterministic check that feeds its objections back to the model as a `tool_result` until every company claim is sourced or gone. |
 | [`src/agent/letter_quality.py`](src/agent/letter_quality.py) | 500 lines of letter rules with no model in sight, numbered against [the style guide](assets/example/letter_style_guide.md) they implement. |
-| [`src/llm.py`](src/llm.py) | One client factory, and the offline mock that lets the whole application — and 332 tests — run with no API key and no network. |
+| [`src/llm.py`](src/llm.py) | One client factory, and the offline mock that lets the whole application — and 334 tests — run with no API key and no network. |
 
 ```bash
-git clone … && pip install -e ".[dev]" && pytest     # 332 tests, no key needed
+git clone … && pip install -e ".[dev]" && pytest     # 334 tests, no key needed
 ANTHROPIC_MOCK=1 uvicorn dashboard.app:app           # the real UI, canned model replies
 ```
 
@@ -327,7 +329,7 @@ scraped corpus personal data under GDPR and the Swiss DSG.
 ## Getting started
 
 ```bash
-git clone https://github.com/ThiloMilo24/job-scoring-engine.git
+git clone https://github.com/thilo-h/job-scoring-engine.git
 cd job-scoring-engine
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
@@ -416,7 +418,7 @@ docs/                     architecture walkthrough, LLM cost table, SQL recipes
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 332 tests, no API key, no network
+pytest                          # 334 tests, no API key, no network
 pytest --cov=src                # coverage report
 ```
 
