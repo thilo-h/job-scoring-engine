@@ -15,6 +15,13 @@ Python 3.12 · FastAPI · SQLite · HTMX · Anthropic API
 > file instead. Letter support is review only: the applicant writes the text,
 > the tooling checks it against explicit rules.
 
+![The dashboard: a ranked list of postings, and the detail drawer for one of them with its nine-dimension radar](docs/images/dashboard.png)
+
+*Mock mode on invented postings ([`scripts/seed_demo.py`](scripts/seed_demo.py)).
+The list is ranked by the deterministic score; the drawer shows where one
+posting's score comes from — nine dimensions on the radar, and the bridge from
+the weighted web (86) plus boost (8) to the 94 in the list.*
+
 ### Start here
 
 Four files carry most of what is interesting, if you only have a few minutes:
@@ -24,10 +31,10 @@ Four files carry most of what is interesting, if you only have a few minutes:
 | [`src/scoring.py`](src/scoring.py) | The deterministic half. Nine weighted dimensions, and a `score_breakdown()` that reconstructs the headline number from its parts so the UI cannot lie about its own arithmetic. |
 | [`src/agent/briefing.py`](src/agent/briefing.py) | Citations as a schema obligation, then a deterministic check that feeds its objections back to the model as a `tool_result` until every company claim is sourced or gone. |
 | [`src/agent/letter_quality.py`](src/agent/letter_quality.py) | 500 lines of letter rules with no model in sight, numbered against [the style guide](assets/example/letter_style_guide.md) they implement. |
-| [`src/llm.py`](src/llm.py) | One client factory, and the offline mock that lets the whole application — and 334 tests — run with no API key and no network. |
+| [`src/llm.py`](src/llm.py) | One client factory, and the offline mock that lets the whole application — and 335 tests — run with no API key and no network. |
 
 ```bash
-git clone … && pip install -e ".[dev]" && pytest     # 334 tests, no key needed
+git clone … && pip install -e ".[dev]" && pytest     # 335 tests, no key needed
 ANTHROPIC_MOCK=1 uvicorn dashboard.app:app           # the real UI, canned model replies
 ```
 
@@ -138,6 +145,12 @@ The bridge exists because boosts and penalties sit outside the radar. Without
 it the big number would not match the area beneath it, and a reviewer could not
 tell why.
 
+<img src="docs/images/score-breakdown.png" width="431" alt="Score breakdown table: each factor's raw value, weight and contribution, adding up to the final score">
+
+*"Why this score?" in the dashboard: every factor's raw value times its weight,
+summed and capped, so the headline number can be checked line by line. The LLM's
+7.5/10 sits above it, deliberately in a separate field.*
+
 A few decisions in there are worth more than the formula:
 
 - **Title beats description.** An industry keyword in the title or company name
@@ -235,6 +248,13 @@ every company fact used in it must arrive in `company_facts` with the
 Sourcing is not a request in the prompt that the model can drift away from — it
 is a field it cannot omit.
 
+<img src="docs/images/briefing.png" width="431" alt="Briefing panel with company, role and profile-fit summaries, and three company facts each linked to its source">
+
+*A briefing as the dashboard shows it. Each company claim in the summary is
+listed underneath with the search result it came from. In this picture the
+model's answer is a hand-written mock fixture, so it shows the shape, not the
+quality.*
+
 ### Deterministic validation as a repair loop
 
 A required field is only half a guard: the model can still cite a URL it never
@@ -261,6 +281,12 @@ that hides its own failures is decoration.
 The shape generalises to any case where a deterministic rule can judge a model's
 output. `letter_quality.py` is the same idea without the loop: rules in code,
 findings to a human.
+
+<img src="docs/images/letter-review.png" width="431" alt="Letter review: six findings above a German draft, including a finished job written about in the present tense">
+
+*Letter review on a deliberately flawed draft. No model is involved: the rules
+report in German, and they know the CV — the fifth finding catches a job that
+ended in 09/2024 written about in the present tense.*
 
 ### Agentic tool use
 
@@ -361,6 +387,12 @@ ANTHROPIC_MOCK=1 python -m src.main --profile example classify-companies
 ANTHROPIC_MOCK=1 uvicorn dashboard.app:app
 ```
 
+To look around without scraping anything, `python scripts/seed_demo.py` fills
+`data/jobs_example.db` with nine invented postings, runs triage and a briefing on
+one of them through the dashboard's own routes in mock mode, and saves a flawed
+draft for the letter review. The screenshots in this README come from that
+database.
+
 The canned responses live in `fixtures/llm/`, one file per tool, and each says
 in its own `_comment` that it is hand-written rather than recorded. They are
 shaped like real responses — tool-use blocks, usage counters, server-tool
@@ -409,6 +441,7 @@ assets/example/           fictional CV and letter style guide
 config/                   profile and watchlist YAML
 fixtures/llm/             canned model responses, one file per tool
 tests/                    offline test suite; conftest blocks the network
+scripts/                  maintenance jobs; seed_demo.py fills a demo database
 docs/                     architecture walkthrough, LLM cost table, SQL recipes
 ```
 
@@ -418,7 +451,7 @@ docs/                     architecture walkthrough, LLM cost table, SQL recipes
 
 ```bash
 pip install -e ".[dev]"
-pytest                          # 334 tests, no API key, no network
+pytest                          # 335 tests, no API key, no network
 pytest --cov=src                # coverage report
 ```
 
