@@ -107,3 +107,13 @@ def test_db_explorer_runs_a_select(client):
 
 def test_unknown_job_is_a_404(client):
     assert client.get("/job/999999").status_code == 404
+
+
+def test_detail_drawer_requests_a_chat_mode_that_exists(client):
+    """The drawer loads its chat panel by URL; a renamed mode used to 400 there."""
+    import re
+
+    from src.agent.chat import CHAT_MODES
+
+    modes = re.findall(r"/chat\?mode=(\w+)", client.get(f"/job/{client.job_id}").text)
+    assert modes and all(m in CHAT_MODES for m in modes)
